@@ -296,9 +296,19 @@ jobs:
                 Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
 
                 try {
+                  # Enhanced Google Drive download with confirmation bypass
+                  Write-Host "   Attempting Google Drive download..." -ForegroundColor Gray
+                  
+                  # First try direct download
                   $webClient = New-Object System.Net.WebClient
                   $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0")
-                  $downloadTask = $webClient.DownloadFileTaskAsync($downloadUrl, $zipPath)
+                  
+                  # For large files, try the virus scan bypass URL
+                  $fileId = "16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG"
+                  $altDownloadUrl = "https://drive.google.com/uc?export=download&confirm=1&id=$fileId"
+                  
+                  Write-Host "   Trying bypass URL: $altDownloadUrl" -ForegroundColor DarkGray
+                  $downloadTask = $webClient.DownloadFileTaskAsync($altDownloadUrl, $zipPath)
 
                   if (-not $downloadTask.Wait([TimeSpan]::FromSeconds($downloadTimeout))) {
                     $webClient.CancelAsync()
@@ -306,8 +316,14 @@ jobs:
                   }
 
                   $webClient.Dispose()
-                  $downloadSuccess = $true
-                  Write-Host "   [SUCCESS] Download completed successfully" -ForegroundColor Green
+                  
+                  # Check if download was successful (file size > 0)
+                  if ((Get-Item $zipPath -ErrorAction SilentlyContinue).Length -gt 1024) {
+                    $downloadSuccess = $true
+                    Write-Host "   [SUCCESS] Download completed successfully" -ForegroundColor Green
+                  } else {
+                    throw "Downloaded file is empty or too small - Google Drive may require manual confirmation"
+                  }
 
                 } catch {
                   Write-Host "   [ERROR] Download attempt $downloadAttempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
@@ -491,9 +507,18 @@ jobs:
               Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
               
               try {
+                # Enhanced Google Drive download for cache
+                Write-Host "   Attempting cache download from Google Drive..." -ForegroundColor Gray
+                
                 $webClient = New-Object System.Net.WebClient
                 $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0")
-                $downloadTask = $webClient.DownloadFileTaskAsync($cacheDownloadUrl, $cacheZipPath)
+                
+                # Use bypass URL for cache file
+                $cacheFileId = "1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q"
+                $altCacheUrl = "https://drive.google.com/uc?export=download&confirm=1&id=$cacheFileId"
+                
+                Write-Host "   Trying cache bypass URL: $altCacheUrl" -ForegroundColor DarkGray
+                $downloadTask = $webClient.DownloadFileTaskAsync($altCacheUrl, $cacheZipPath)
                 
                 if (-not $downloadTask.Wait([TimeSpan]::FromSeconds($downloadTimeout))) {
                   $webClient.CancelAsync()
@@ -501,8 +526,14 @@ jobs:
                 }
                 
                 $webClient.Dispose()
-                $downloadSuccess = $true
-                Write-Host "   [SUCCESS] Cache download completed" -ForegroundColor Green
+                
+                # Verify cache download
+                if ((Get-Item $cacheZipPath -ErrorAction SilentlyContinue).Length -gt 100) {
+                  $downloadSuccess = $true
+                  Write-Host "   [SUCCESS] Cache download completed" -ForegroundColor Green
+                } else {
+                  throw "Cache file is empty or too small"
+                }
                 
               } catch {
                 Write-Host "   [ERROR] Download attempt $downloadAttempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
