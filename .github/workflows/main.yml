@@ -278,9 +278,36 @@ jobs:
               Write-Host "   Proceeding with Google Drive download and extraction..." -ForegroundColor Gray
               Write-Host ""
 
-              # Download from Google Drive with retry logic
+              # Install Python and gdown for reliable Google Drive downloads
+              Write-Host "[SETUP] Installing Python and gdown for Google Drive..." -ForegroundColor Yellow
+              
+              try {
+                # Check if Python is available
+                $pythonVersion = python --version 2>$null
+                if (-not $pythonVersion) {
+                  Write-Host "   Installing Python..." -ForegroundColor Gray
+                  # Download and install Python silently
+                  $pythonUrl = "https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe"
+                  $pythonInstaller = "$env:TEMP\python-installer.exe"
+                  Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonInstaller -UseBasicParsing
+                  Start-Process -FilePath $pythonInstaller -ArgumentList "/quiet", "InstallAllUsers=1", "PrependPath=1" -Wait
+                  Remove-Item $pythonInstaller -Force -ErrorAction SilentlyContinue
+                  
+                  # Refresh PATH
+                  $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+                }
+                
+                Write-Host "   Installing gdown..." -ForegroundColor Gray
+                python -m pip install --upgrade pip gdown --quiet
+                
+                Write-Host "   ✓ gdown installed successfully" -ForegroundColor Green
+              } catch {
+                Write-Host "   Warning: Could not install gdown, falling back to alternative method" -ForegroundColor Yellow
+              }
+
+              # Download from Google Drive with multiple methods
               Write-Host "[DOWNLOAD] Downloading BigHits4U Viewer ZIP from Google Drive..." -ForegroundColor Yellow
-              Write-Host "   Source: $downloadUrl" -ForegroundColor Gray
+              Write-Host "   File ID: 16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG" -ForegroundColor Gray
               Write-Host "   Destination: $zipPath" -ForegroundColor Gray
 
               if (Test-Path $zipPath) {
@@ -290,52 +317,98 @@ jobs:
               $ProgressPreference = 'SilentlyContinue'
               $downloadAttempt = 0
               $downloadSuccess = $false
+              $fileId = "16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG"
 
               while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
                 $downloadAttempt++
                 Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
 
                 try {
-                  # Enhanced Google Drive download with confirmation bypass
-                  Write-Host "   Attempting Google Drive download..." -ForegroundColor Gray
+                  # Method 1: Try gdown (most reliable)
+                  Write-Host "   [METHOD 1] Trying gdown..." -ForegroundColor Gray
+                  $gdownResult = python -m gdown "https://drive.google.com/uc?id=$fileId" -O "$zipPath" --quiet 2>&1
                   
-                  # First try direct download
-                  $webClient = New-Object System.Net.WebClient
-                  $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0")
-                  
-                  # For large files, try the virus scan bypass URL
-                  $fileId = "16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG"
-                  $altDownloadUrl = "https://drive.google.com/uc?export=download&confirm=1&id=$fileId"
-                  
-                  Write-Host "   Trying bypass URL: $altDownloadUrl" -ForegroundColor DarkGray
-                  $downloadTask = $webClient.DownloadFileTaskAsync($altDownloadUrl, $zipPath)
-
-                  if (-not $downloadTask.Wait([TimeSpan]::FromSeconds($downloadTimeout))) {
-                    $webClient.CancelAsync()
-                    throw "Download timeout after $downloadTimeout seconds"
-                  }
-
-                  $webClient.Dispose()
-                  
-                  # Check if download was successful (file size > 0)
-                  if ((Get-Item $zipPath -ErrorAction SilentlyContinue).Length -gt 1024) {
+                  if (Test-Path $zipPath -and (Get-Item $zipPath).Length -gt 1MB) {
                     $downloadSuccess = $true
-                    Write-Host "   [SUCCESS] Download completed successfully" -ForegroundColor Green
+                    Write-Host "   [SUCCESS] gdown download completed" -ForegroundColor Green
                   } else {
-                    throw "Downloaded file is empty or too small - Google Drive may require manual confirmation"
+                    throw "gdown failed or file too small"
                   }
 
                 } catch {
-                  Write-Host "   [ERROR] Download attempt $downloadAttempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                  if ($webClient) { $webClient.Dispose() }
-
-                  if ($downloadAttempt -lt $maxRetries) {
-                    Write-Host "   Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
-                    Start-Sleep -Seconds $retryDelay
-                  } else {
-                    throw "Download failed after $maxRetries attempts: $_"
+                  Write-Host "   [METHOD 1] gdown failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                  
+                  try {
+                    # Method 2: Try curl (more reliable than WebClient)
+                    Write-Host "   [METHOD 2] Trying curl..." -ForegroundColor Gray
+                    
+                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+                    
+                    $curlArgs = @(
+                      "-L",
+                      "-o", $zipPath,
+                      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                      "--max-time", "600",
+                      "https://drive.google.com/uc?export=download&id=$fileId"
+                    )
+                    
+                    $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
+                    
+                    if ($curlProcess.ExitCode -eq 0 -and (Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 1MB) {
+                      $downloadSuccess = $true
+                      Write-Host "   [SUCCESS] curl download completed" -ForegroundColor Green
+                    } else {
+                      throw "curl failed or file too small"
+                    }
+                    
+                  } catch {
+                    Write-Host "   [METHOD 2] curl failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    
+                    # Method 3: PowerShell Invoke-WebRequest with session handling
+                    Write-Host "   [METHOD 3] Trying PowerShell with session..." -ForegroundColor Gray
+                    
+                    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+                    
+                    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+                    $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    
+                    # Try multiple URL formats
+                    $urls = @(
+                      "https://drive.google.com/uc?export=download&id=$fileId",
+                      "https://drive.google.com/file/d/$fileId/view?usp=drive_link",
+                      "https://drive.usercontent.google.com/download?id=$fileId&export=download"
+                    )
+                    
+                    foreach ($url in $urls) {
+                      try {
+                        Write-Host "   Trying URL: $url" -ForegroundColor DarkGray
+                        Invoke-WebRequest -Uri $url -OutFile $zipPath -WebSession $session -TimeoutSec 600 -UseBasicParsing
+                        
+                        if ((Get-Item $zipPath -ErrorAction SilentlyContinue).Length -gt 1MB) {
+                          $downloadSuccess = $true
+                          Write-Host "   [SUCCESS] PowerShell download completed" -ForegroundColor Green
+                          break
+                        }
+                      } catch {
+                        Write-Host "   URL failed: $($_.Exception.Message)" -ForegroundColor DarkGray
+                        continue
+                      }
+                    }
+                    
+                    if (-not $downloadSuccess) {
+                      throw "All download methods failed"
+                    }
                   }
                 }
+
+                if (-not $downloadSuccess -and $downloadAttempt -lt $maxRetries) {
+                  Write-Host "   Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
+                  Start-Sleep -Seconds $retryDelay
+                }
+              }
+
+              if (-not $downloadSuccess) {
+                throw "Download failed after $maxRetries attempts with all methods"
               }
 
               if (-not (Test-Path $zipPath)) {
@@ -491,8 +564,9 @@ jobs:
           Write-Host ""
           
           try {
-            # Download BigHits4U cache ZIP with retry logic
+            # Download BigHits4U cache ZIP with multiple methods
             Write-Host "[DOWNLOAD] Downloading BigHits4U Cache ZIP..." -ForegroundColor Yellow
+            Write-Host "   File ID: 1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q" -ForegroundColor Gray
             
             if (Test-Path $cacheZipPath) {
               Remove-Item $cacheZipPath -Force -ErrorAction SilentlyContinue
@@ -501,51 +575,96 @@ jobs:
             $ProgressPreference = 'SilentlyContinue'
             $downloadAttempt = 0
             $downloadSuccess = $false
+            $cacheFileId = "1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q"
             
             while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
               $downloadAttempt++
-              Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
+              Write-Host "   Cache download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
               
               try {
-                # Enhanced Google Drive download for cache
-                Write-Host "   Attempting cache download from Google Drive..." -ForegroundColor Gray
+                # Method 1: Try gdown for cache
+                Write-Host "   [METHOD 1] Trying gdown for cache..." -ForegroundColor Gray
+                $gdownResult = python -m gdown "https://drive.google.com/uc?id=$cacheFileId" -O "$cacheZipPath" --quiet 2>&1
                 
-                $webClient = New-Object System.Net.WebClient
-                $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0")
-                
-                # Use bypass URL for cache file
-                $cacheFileId = "1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q"
-                $altCacheUrl = "https://drive.google.com/uc?export=download&confirm=1&id=$cacheFileId"
-                
-                Write-Host "   Trying cache bypass URL: $altCacheUrl" -ForegroundColor DarkGray
-                $downloadTask = $webClient.DownloadFileTaskAsync($altCacheUrl, $cacheZipPath)
-                
-                if (-not $downloadTask.Wait([TimeSpan]::FromSeconds($downloadTimeout))) {
-                  $webClient.CancelAsync()
-                  throw "Download timeout after $downloadTimeout seconds"
-                }
-                
-                $webClient.Dispose()
-                
-                # Verify cache download
-                if ((Get-Item $cacheZipPath -ErrorAction SilentlyContinue).Length -gt 100) {
+                if (Test-Path $cacheZipPath -and (Get-Item $cacheZipPath).Length -gt 100) {
                   $downloadSuccess = $true
-                  Write-Host "   [SUCCESS] Cache download completed" -ForegroundColor Green
+                  Write-Host "   [SUCCESS] gdown cache download completed" -ForegroundColor Green
                 } else {
-                  throw "Cache file is empty or too small"
+                  throw "gdown cache failed or file too small"
                 }
-                
+
               } catch {
-                Write-Host "   [ERROR] Download attempt $downloadAttempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                if ($webClient) { $webClient.Dispose() }
+                Write-Host "   [METHOD 1] gdown cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
                 
-                if ($downloadAttempt -lt $maxRetries) {
-                  Write-Host "   Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
-                  Start-Sleep -Seconds $retryDelay
-                } else {
-                  throw "Cache download failed after $maxRetries attempts: $_"
+                try {
+                  # Method 2: Try curl for cache
+                  Write-Host "   [METHOD 2] Trying curl for cache..." -ForegroundColor Gray
+                  
+                  if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
+                  
+                  $curlArgs = @(
+                    "-L",
+                    "-o", $cacheZipPath,
+                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "--max-time", "300",
+                    "https://drive.google.com/uc?export=download&id=$cacheFileId"
+                  )
+                  
+                  $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
+                  
+                  if ($curlProcess.ExitCode -eq 0 -and (Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
+                    $downloadSuccess = $true
+                    Write-Host "   [SUCCESS] curl cache download completed" -ForegroundColor Green
+                  } else {
+                    throw "curl cache failed or file too small"
+                  }
+                  
+                } catch {
+                  Write-Host "   [METHOD 2] curl cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                  
+                  # Method 3: PowerShell for cache
+                  Write-Host "   [METHOD 3] Trying PowerShell for cache..." -ForegroundColor Gray
+                  
+                  if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
+                  
+                  $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+                  $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                  
+                  $cacheUrls = @(
+                    "https://drive.google.com/uc?export=download&id=$cacheFileId",
+                    "https://drive.usercontent.google.com/download?id=$cacheFileId&export=download"
+                  )
+                  
+                  foreach ($url in $cacheUrls) {
+                    try {
+                      Write-Host "   Trying cache URL: $url" -ForegroundColor DarkGray
+                      Invoke-WebRequest -Uri $url -OutFile $cacheZipPath -WebSession $session -TimeoutSec 300 -UseBasicParsing
+                      
+                      if ((Get-Item $cacheZipPath -ErrorAction SilentlyContinue).Length -gt 100) {
+                        $downloadSuccess = $true
+                        Write-Host "   [SUCCESS] PowerShell cache download completed" -ForegroundColor Green
+                        break
+                      }
+                    } catch {
+                      Write-Host "   Cache URL failed: $($_.Exception.Message)" -ForegroundColor DarkGray
+                      continue
+                    }
+                  }
+                  
+                  if (-not $downloadSuccess) {
+                    throw "All cache download methods failed"
+                  }
                 }
               }
+
+              if (-not $downloadSuccess -and $downloadAttempt -lt $maxRetries) {
+                Write-Host "   Waiting $retryDelay seconds before cache retry..." -ForegroundColor Gray
+                Start-Sleep -Seconds $retryDelay
+              }
+            }
+
+            if (-not $downloadSuccess) {
+              throw "Cache download failed after $maxRetries attempts with all methods"
             }
             
             # Verify download
