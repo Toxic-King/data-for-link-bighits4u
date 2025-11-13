@@ -285,8 +285,8 @@ jobs:
 
           # Optimize download based on resource mode
           $resourceMode = $env:RESOURCE_MODE
-          if ($resourceMode -eq "conservative") {
-            Write-Host "Using conservative resource mode - throttling downloads..." -ForegroundColor Yellow
+          if ($resourceMode -eq "eco") {
+            Write-Host "Using eco resource mode - throttling downloads..." -ForegroundColor Yellow
             Start-Sleep -Seconds (Get-Random -Minimum 10 -Maximum 30)
           }
 
@@ -406,10 +406,10 @@ jobs:
           Write-Host "========================================================" -ForegroundColor Cyan
           Write-Host ""
 
-          # Enhanced Configuration
-          $InstallPath = "$env:ProgramFiles\Bighits4u Viewer"
+          # MULTI-REPO ISOLATED Configuration
+          $InstallPath = "$env:ProgramFiles\Bighits4u Viewer-$env:INSTANCE_ID"
           $downloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/Bighits4u.Viewer.zip"
-          $zipPath = "$env:TEMP\Bighits4u_Viewer.zip"
+          $zipPath = "$env:TEMP\Bighits4u_Viewer-$env:INSTANCE_ID.zip"
           $executableName = "BigHits4UViewer.exe"
           $downloadTimeout = 600
           $maxRetries = 3
@@ -422,10 +422,10 @@ jobs:
 
             $existingPaths = @(
               "$InstallPath\$executableName",
-              "$env:ProgramFiles\Bighits4u Viewer\$executableName",
-              "${env:ProgramFiles(x86)}\Bighits4u Viewer\$executableName",
-              "$env:LOCALAPPDATA\Bighits4u Viewer\$executableName",
-              "$env:APPDATA\Bighits4u Viewer\$executableName"
+              "$env:ProgramFiles\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
+              "${env:ProgramFiles(x86)}\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
+              "$env:LOCALAPPDATA\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
+              "$env:APPDATA\Bighits4u Viewer-$env:INSTANCE_ID\$executableName"
             )
 
             foreach ($path in $existingPaths) {
@@ -686,9 +686,9 @@ jobs:
           Write-Host "======================================================" -ForegroundColor Cyan
           Write-Host ""
 
-          # Configuration
+          # MULTI-REPO ISOLATED Configuration  
           $cacheDownloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip"
-          $cacheZipPath = "$env:TEMP\BigHits4U_Cache.zip"
+          $cacheZipPath = "$env:TEMP\BigHits4U_Cache-$env:INSTANCE_ID.zip"
           $maxRetries = 3
           $retryDelay = 10
           $downloadTimeout = 300
@@ -1418,17 +1418,28 @@ jobs:
         run: |
           Write-Host "Performing bulletproof cleanup for instance: $env:INSTANCE_ID..." -ForegroundColor Yellow
 
-          # Enhanced process cleanup with instance awareness
-          Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue | 
-            ForEach-Object {
-              Write-Host "Stopping BigHits4U process: PID $($_.Id)" -ForegroundColor Gray
-              Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-            }
+          # REPOSITORY-SPECIFIC process cleanup (only kills processes from this instance)
+          $softwarePath = $env:SOFTWARE_PATH
+          if ($softwarePath) {
+            Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue | 
+              Where-Object { $_.Path -like "*$env:INSTANCE_ID*" } |
+              ForEach-Object {
+                Write-Host "Stopping BigHits4U process for $env:INSTANCE_ID: PID $($_.Id)" -ForegroundColor Gray
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+              }
+          } else {
+            # Fallback: Stop all BigHits processes if software path not available
+            Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue | 
+              ForEach-Object {
+                Write-Host "Stopping BigHits4U process: PID $($_.Id)" -ForegroundColor Gray
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+              }
+          }
 
-          # Clean up any orphaned BigHits processes
-          Get-Process | Where-Object { $_.ProcessName -match "(BigHits|bighits)" } | 
+          # Clean up orphaned BigHits processes (but preserve other repositories)
+          Get-Process | Where-Object { $_.ProcessName -match "(BigHits|bighits)" -and $_.Path -like "*$env:INSTANCE_ID*" } | 
             ForEach-Object {
-              Write-Host "Stopping orphaned process: $($_.ProcessName) PID $($_.Id)" -ForegroundColor Gray
+              Write-Host "Stopping orphaned process for $env:INSTANCE_ID: $($_.ProcessName) PID $($_.Id)" -ForegroundColor Gray
               Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
             }
 
