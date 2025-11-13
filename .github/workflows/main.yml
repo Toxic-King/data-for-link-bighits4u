@@ -527,9 +527,10 @@ jobs:
           Write-Host ""
           
           try {
-            # Download BigHits4U cache ZIP with multiple methods
-            Write-Host "[DOWNLOAD] Downloading BigHits4U Cache ZIP..." -ForegroundColor Yellow
-            Write-Host "   File ID: 1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q" -ForegroundColor Gray
+            # Simple GitHub Releases Download for Cache
+            Write-Host "[DOWNLOAD] Downloading BigHits4U Cache from GitHub Releases..." -ForegroundColor Yellow
+            Write-Host "   Source: $cacheDownloadUrl" -ForegroundColor Gray
+            Write-Host "   Destination: $cacheZipPath" -ForegroundColor Gray
             
             if (Test-Path $cacheZipPath) {
               Remove-Item $cacheZipPath -Force -ErrorAction SilentlyContinue
@@ -538,39 +539,40 @@ jobs:
             $ProgressPreference = 'SilentlyContinue'
             $downloadAttempt = 0
             $downloadSuccess = $false
-            $cacheFileId = "1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q"
             
             while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
               $downloadAttempt++
               Write-Host "   Cache download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
               
               try {
-                # Method 1: Try gdown for cache
-                Write-Host "   [METHOD 1] Trying gdown for cache..." -ForegroundColor Gray
-                $gdownResult = python -m gdown "https://drive.google.com/uc?id=$cacheFileId" -O "$cacheZipPath" --quiet 2>&1
+                # Method 1: PowerShell Invoke-WebRequest (Primary)
+                Write-Host "   [METHOD 1] PowerShell direct cache download..." -ForegroundColor Gray
                 
-                if (Test-Path $cacheZipPath -and (Get-Item $cacheZipPath).Length -gt 100) {
+                Invoke-WebRequest -Uri $cacheDownloadUrl -OutFile $cacheZipPath -UseBasicParsing -TimeoutSec $downloadTimeout
+                
+                if ((Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
                   $downloadSuccess = $true
-                  Write-Host "   [SUCCESS] gdown cache download completed" -ForegroundColor Green
+                  Write-Host "   [SUCCESS] PowerShell cache download completed" -ForegroundColor Green
                 } else {
-                  throw "gdown cache failed or file too small"
+                  throw "Downloaded cache file is too small or missing"
                 }
 
               } catch {
-                Write-Host "   [METHOD 1] gdown cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host "   [METHOD 1] PowerShell cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
                 
                 try {
-                  # Method 2: Try curl for cache
-                  Write-Host "   [METHOD 2] Trying curl for cache..." -ForegroundColor Gray
+                  # Method 2: curl (Backup)
+                  Write-Host "   [METHOD 2] curl direct cache download..." -ForegroundColor Gray
                   
                   if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
                   
                   $curlArgs = @(
                     "-L",
                     "-o", $cacheZipPath,
-                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "--max-time", "300",
-                    "https://drive.google.com/uc?export=download&id=$cacheFileId"
+                    "--max-time", $downloadTimeout,
+                    "--retry", "2",
+                    "--retry-delay", "3",
+                    $cacheDownloadUrl
                   )
                   
                   $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
@@ -579,42 +581,33 @@ jobs:
                     $downloadSuccess = $true
                     Write-Host "   [SUCCESS] curl cache download completed" -ForegroundColor Green
                   } else {
-                    throw "curl cache failed or file too small"
+                    throw "curl cache failed with exit code: $($curlProcess.ExitCode)"
                   }
                   
                 } catch {
                   Write-Host "   [METHOD 2] curl cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
                   
-                  # Method 3: PowerShell for cache
-                  Write-Host "   [METHOD 3] Trying PowerShell for cache..." -ForegroundColor Gray
-                  
-                  if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
-                  
-                  $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-                  $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                  
-                  $cacheUrls = @(
-                    "https://drive.google.com/uc?export=download&id=$cacheFileId",
-                    "https://drive.usercontent.google.com/download?id=$cacheFileId&export=download"
-                  )
-                  
-                  foreach ($url in $cacheUrls) {
-                    try {
-                      Write-Host "   Trying cache URL: $url" -ForegroundColor DarkGray
-                      Invoke-WebRequest -Uri $url -OutFile $cacheZipPath -WebSession $session -TimeoutSec 300 -UseBasicParsing
-                      
-                      if ((Get-Item $cacheZipPath -ErrorAction SilentlyContinue).Length -gt 100) {
-                        $downloadSuccess = $true
-                        Write-Host "   [SUCCESS] PowerShell cache download completed" -ForegroundColor Green
-                        break
-                      }
-                    } catch {
-                      Write-Host "   Cache URL failed: $($_.Exception.Message)" -ForegroundColor DarkGray
-                      continue
+                  # Method 3: WebClient (Final fallback)
+                  try {
+                    Write-Host "   [METHOD 3] WebClient cache download..." -ForegroundColor Gray
+                    
+                    if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
+                    
+                    $webClient = New-Object System.Net.WebClient
+                    $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    $webClient.DownloadFile($cacheDownloadUrl, $cacheZipPath)
+                    $webClient.Dispose()
+                    
+                    if ((Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
+                      $downloadSuccess = $true
+                      Write-Host "   [SUCCESS] WebClient cache download completed" -ForegroundColor Green
+                    } else {
+                      throw "WebClient cache download too small or failed"
                     }
-                  }
-                  
-                  if (-not $downloadSuccess) {
+                    
+                  } catch {
+                    Write-Host "   [METHOD 3] WebClient cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    if ($webClient) { $webClient.Dispose() }
                     throw "All cache download methods failed"
                   }
                 }
@@ -627,7 +620,7 @@ jobs:
             }
 
             if (-not $downloadSuccess) {
-              throw "Cache download failed after $maxRetries attempts with all methods"
+              throw "Cache download failed after $maxRetries attempts"
             }
             
             # Verify download
