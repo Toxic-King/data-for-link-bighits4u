@@ -17,14 +17,14 @@
 #    - Create auth key (check "Reusable" and "Ephemeral")
 #    - Add to GitHub: Settings > Secrets > Actions > New repository secret
 #
-# 2. Google Drive URLs: ✅ CONFIGURED
-#    - BigHits4U Viewer ZIP: File ID 16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG
-#    - BigHits4U Cache ZIP: File ID 1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q
-#    - Files are ready for download via direct Google Drive URLs
+# 2. GitHub Releases URLs: ✅ CONFIGURED
+#    - BigHits4U Viewer: https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/Bighits4u.Viewer.zip
+#    - BigHits4U Cache: https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip
+#    - Files are ready for reliable download via GitHub Releases
 #
 # ==============================================================================
 
-name: BigHits4U with Tailscale RDP (Google Drive Enhanced)
+name: BigHits4U with Tailscale RDP (GitHub Releases Enhanced)
 
 on:
   workflow_dispatch:
@@ -238,13 +238,13 @@ jobs:
         id: install
         run: |
           Write-Host "========================================================" -ForegroundColor Cyan
-          Write-Host "=     BigHits4U Viewer Google Drive Installer         =" -ForegroundColor Cyan
+          Write-Host "=     BigHits4U Viewer GitHub Releases Installer      =" -ForegroundColor Cyan
           Write-Host "========================================================" -ForegroundColor Cyan
           Write-Host ""
 
           # Enhanced Configuration
           $InstallPath = "$env:ProgramFiles\Bighits4u Viewer"
-          $downloadUrl = "https://drive.google.com/uc?id=16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG&export=download"
+          $downloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/Bighits4u.Viewer.zip"
           $zipPath = "$env:TEMP\Bighits4u_Viewer.zip"
           $executableName = "BigHits4UViewer.exe"
           $downloadTimeout = 600
@@ -275,12 +275,12 @@ jobs:
 
             if (-not $script:installedPath) {
               Write-Host "   No existing installation found" -ForegroundColor Gray
-              Write-Host "   Proceeding with Google Drive download and extraction..." -ForegroundColor Gray
+              Write-Host "   Proceeding with GitHub Releases download and extraction..." -ForegroundColor Gray
               Write-Host ""
 
-              # ULTIMATE Google Drive Download with No Dependencies
-              Write-Host "[DOWNLOAD] Using Advanced Google Drive Download Methods..." -ForegroundColor Yellow
-              Write-Host "   File ID: 16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG" -ForegroundColor Gray
+              # Simple and Reliable GitHub Releases Download
+              Write-Host "[DOWNLOAD] Downloading BigHits4U Viewer from GitHub Releases..." -ForegroundColor Yellow
+              Write-Host "   Source: $downloadUrl" -ForegroundColor Gray
               Write-Host "   Destination: $zipPath" -ForegroundColor Gray
 
               if (Test-Path $zipPath) {
@@ -290,171 +290,76 @@ jobs:
               $ProgressPreference = 'SilentlyContinue'
               $downloadAttempt = 0
               $downloadSuccess = $false
-              $fileId = "16Mrvq9NAxEuXgLM5ijS7jZm-RPpefIsG"
 
               while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
                 $downloadAttempt++
                 Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
 
-                # Method 1: Advanced curl with Google Drive specific handling
                 try {
-                  Write-Host "   [METHOD 1] Advanced curl with Google Drive API..." -ForegroundColor Gray
+                  # Method 1: PowerShell Invoke-WebRequest (Primary)
+                  Write-Host "   [METHOD 1] PowerShell direct download..." -ForegroundColor Gray
                   
-                  if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+                  Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec $downloadTimeout
                   
-                  # First get the download confirmation token
-                  $confirmUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-                  $confirmPage = "$env:TEMP\gdrive_confirm.html"
-                  
-                  # Download confirmation page
-                  curl -c "$env:TEMP\gdrive_cookies.txt" -s -L -o "$confirmPage" "$confirmUrl"
-                  
-                  # Extract confirm token from the page
-                  $confirmContent = Get-Content "$confirmPage" -Raw -ErrorAction SilentlyContinue
-                  $confirmToken = ""
-                  if ($confirmContent -match 'name="confirm"[^>]*value="([^"]*)"') {
-                    $confirmToken = $matches[1]
-                    Write-Host "   Found confirmation token: $confirmToken" -ForegroundColor DarkGray
-                  }
-                  
-                  # Download with confirmation token
-                  if ($confirmToken) {
-                    $downloadUrl = "https://drive.google.com/uc?export=download&confirm=$confirmToken&id=$fileId"
-                  } else {
-                    $downloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-                  }
-                  
-                  Write-Host "   Downloading with URL: $downloadUrl" -ForegroundColor DarkGray
-                  
-                  $curlArgs = @(
-                    "-b", "$env:TEMP\gdrive_cookies.txt",
-                    "-L",
-                    "-o", $zipPath,
-                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "--max-time", "900",
-                    "--retry", "3",
-                    "--retry-delay", "5",
-                    $downloadUrl
-                  )
-                  
-                  $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow -RedirectStandardError "$env:TEMP\curl_error.log"
-                  
-                  # Clean up temp files
-                  Remove-Item "$env:TEMP\gdrive_cookies.txt" -Force -ErrorAction SilentlyContinue
-                  Remove-Item "$confirmPage" -Force -ErrorAction SilentlyContinue
-                  
-                  if ($curlProcess.ExitCode -eq 0 -and (Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
+                  if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
                     $downloadSuccess = $true
-                    Write-Host "   [SUCCESS] Advanced curl download completed" -ForegroundColor Green
+                    Write-Host "   [SUCCESS] PowerShell download completed" -ForegroundColor Green
                   } else {
-                    $curlError = Get-Content "$env:TEMP\curl_error.log" -Raw -ErrorAction SilentlyContinue
-                    throw "Advanced curl failed. Exit code: $($curlProcess.ExitCode), Error: $curlError"
+                    throw "Downloaded file is too small or missing"
                   }
-                  
+
                 } catch {
-                  Write-Host "   [METHOD 1] Advanced curl failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "   [METHOD 1] PowerShell failed: $($_.Exception.Message)" -ForegroundColor Yellow
                   
-                  # Method 2: PowerShell with Google Drive API simulation
                   try {
-                    Write-Host "   [METHOD 2] PowerShell Google Drive API simulation..." -ForegroundColor Gray
+                    # Method 2: curl (Backup)
+                    Write-Host "   [METHOD 2] curl direct download..." -ForegroundColor Gray
                     
                     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                     
-                    # Create web session with proper headers
-                    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-                    $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    $curlArgs = @(
+                      "-L",
+                      "-o", $zipPath,
+                      "--max-time", $downloadTimeout,
+                      "--retry", "2",
+                      "--retry-delay", "3",
+                      $downloadUrl
+                    )
                     
-                    # First request to get cookies and confirmation page
-                    $initialUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-                    Write-Host "   Getting confirmation page..." -ForegroundColor DarkGray
+                    $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
                     
-                    $response = Invoke-WebRequest -Uri $initialUrl -WebSession $session -UseBasicParsing -TimeoutSec 60
-                    
-                    # Look for download confirmation
-                    $confirmToken = ""
-                    if ($response.Content -match 'name="confirm"[^>]*value="([^"]*)"') {
-                      $confirmToken = $matches[1]
-                      Write-Host "   Found confirmation token: $confirmToken" -ForegroundColor DarkGray
-                    }
-                    
-                    # Alternative: Look for direct download link
-                    $directLink = ""
-                    if ($response.Content -match 'href="(/uc\?export=download[^"]*)"') {
-                      $directLink = "https://drive.google.com" + $matches[1]
-                      Write-Host "   Found direct link: $directLink" -ForegroundColor DarkGray
-                    }
-                    
-                    # Try download with confirmation
-                    if ($confirmToken) {
-                      $downloadUrl = "https://drive.google.com/uc?export=download&confirm=$confirmToken&id=$fileId"
-                    } elseif ($directLink) {
-                      $downloadUrl = $directLink
-                    } else {
-                      $downloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-                    }
-                    
-                    Write-Host "   Downloading from: $downloadUrl" -ForegroundColor DarkGray
-                    
-                    # Download the actual file
-                    $downloadResponse = Invoke-WebRequest -Uri $downloadUrl -WebSession $session -OutFile $zipPath -UseBasicParsing -TimeoutSec 900
-                    
-                    if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
+                    if ($curlProcess.ExitCode -eq 0 -and (Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
                       $downloadSuccess = $true
-                      Write-Host "   [SUCCESS] PowerShell API simulation completed" -ForegroundColor Green
+                      Write-Host "   [SUCCESS] curl download completed" -ForegroundColor Green
                     } else {
-                      throw "Downloaded file is too small or missing"
+                      throw "curl failed with exit code: $($curlProcess.ExitCode)"
                     }
                     
                   } catch {
-                    Write-Host "   [METHOD 2] PowerShell API failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    Write-Host "   [METHOD 2] curl failed: $($_.Exception.Message)" -ForegroundColor Yellow
                     
-                    # Method 3: Direct file stream download
+                    # Method 3: WebClient (Final fallback)
                     try {
-                      Write-Host "   [METHOD 3] Direct file stream method..." -ForegroundColor Gray
+                      Write-Host "   [METHOD 3] WebClient download..." -ForegroundColor Gray
                       
                       if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                       
-                      # Try alternative Google Drive endpoints
-                      $alternativeUrls = @(
-                        "https://drive.usercontent.google.com/download?id=$fileId&export=download&authuser=0",
-                        "https://drive.google.com/file/d/$fileId/view?usp=sharing",
-                        "https://docs.google.com/uc?export=download&id=$fileId"
-                      )
+                      $webClient = New-Object System.Net.WebClient
+                      $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                      $webClient.DownloadFile($downloadUrl, $zipPath)
+                      $webClient.Dispose()
                       
-                      foreach ($altUrl in $alternativeUrls) {
-                        try {
-                          Write-Host "   Trying alternative: $altUrl" -ForegroundColor DarkGray
-                          
-                          $webClient = New-Object System.Net.WebClient
-                          $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                          $webClient.Headers.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-                          $webClient.Headers.Add("Accept-Language", "en-US,en;q=0.5")
-                          $webClient.Headers.Add("Accept-Encoding", "gzip, deflate")
-                          $webClient.Headers.Add("Connection", "keep-alive")
-                          
-                          $webClient.DownloadFile($altUrl, $zipPath)
-                          $webClient.Dispose()
-                          
-                          if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
-                            $downloadSuccess = $true
-                            Write-Host "   [SUCCESS] Direct stream download completed" -ForegroundColor Green
-                            break
-                          }
-                          
-                        } catch {
-                          Write-Host "     Alternative URL failed: $($_.Exception.Message)" -ForegroundColor DarkGray
-                          if ($webClient) { $webClient.Dispose() }
-                          continue
-                        }
-                      }
-                      
-                      if (-not $downloadSuccess) {
-                        throw "All alternative URLs failed"
+                      if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
+                        $downloadSuccess = $true
+                        Write-Host "   [SUCCESS] WebClient download completed" -ForegroundColor Green
+                      } else {
+                        throw "WebClient download too small or failed"
                       }
                       
                     } catch {
-                      Write-Host "   [METHOD 3] Direct stream failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                      throw "All download methods exhausted"
+                      Write-Host "   [METHOD 3] WebClient failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                      if ($webClient) { $webClient.Dispose() }
+                      throw "All download methods failed"
                     }
                   }
                 }
@@ -466,7 +371,7 @@ jobs:
               }
 
               if (-not $downloadSuccess) {
-                throw "Download failed after $maxRetries attempts with all advanced methods"
+                throw "Download failed after $maxRetries attempts"
               }
 
               if (-not (Test-Path $zipPath)) {
@@ -589,12 +494,12 @@ jobs:
       - name: Download and Extract BigHits4U Cache
         run: |
           Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host "Downloading BigHits4U Cache from Google Drive..." -ForegroundColor Cyan
+          Write-Host "Downloading BigHits4U Cache from GitHub Releases..." -ForegroundColor Cyan
           Write-Host "======================================================" -ForegroundColor Cyan
           Write-Host ""
 
           # Configuration
-          $cacheDownloadUrl = "https://drive.google.com/uc?id=1Tp6VmT2GzNXp3NC5DEsrzok6-mJ3KN3Q&export=download"
+          $cacheDownloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip"
           $cacheZipPath = "$env:TEMP\BigHits4U_Cache.zip"
           $maxRetries = 3
           $retryDelay = 10
