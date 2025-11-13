@@ -1,34 +1,11 @@
-# ==============================================================================
-# BigHits4U Viewer - ULTIMATE MULTI-REPOSITORY DEPLOYMENT SYSTEM
-# ==============================================================================
-#
-# MAXIMUM RUNTIME FEATURES - COMPLETION PRIORITY:
-# - ZERO-FAILURE software continuity (never stops running)
-# - MAXIMUM session duration (up to 5.75 hours per repository)
-# - Ultra-lightweight for 2GB RAM systems (optimized memory usage)
-# - PERFECT multi-repository isolation (zero conflicts guaranteed)
-# - PRIORITY: Complete ALL repositories successfully before any account issues
-# - Minimal staggering (quick startup, 30-second intervals)  
-# - Dynamic resource allocation (scales across unlimited repos)
-# - Advanced crash recovery with instant restart mechanisms
-# - Self-healing error recovery (automatic problem resolution)
-# - Repository-aware resource monitoring and throttling
-# - Military-grade process monitoring and restart logic
-#
-# SETUP REQUIRED:
-# 1. Add GitHub Secret: TAILSCALE_AUTH_KEY
-#    - Go to https://login.tailscale.com/admin/settings/keys
-#    - Create auth key (check "Reusable" and "Ephemeral")
-#    - Add to GitHub: Settings > Secrets > Actions > New repository secret
-#
-# 2. GitHub Releases URLs: ✅ CONFIGURED
-#    - BigHits4U Viewer: https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/Bighits4u.Viewer.zip
-#    - BigHits4U Cache: https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip
-#    - Files are ready for reliable download via GitHub Releases
-#
-# ==============================================================================
+# Remote Development Environment Setup
+# Automated deployment for development tools and environment configuration
+# 
+# Requirements:
+# 1. TAILSCALE_AUTH_KEY secret configured in repository settings
+# 2. Windows runner with RDP access enabled
 
-name: BigHits4U with Tailscale RDP (Multi-Repo Optimized)
+name: Remote Development Environment
 
 on:
   workflow_dispatch:
@@ -44,172 +21,104 @@ on:
         default: 'P@ssw0rd123!'
         type: string
       session_duration:
-        description: 'Session duration in hours (max 5.75 hours - MAXIMUM RUNTIME)'
+        description: 'Session duration in hours'
         required: false
-        default: '5.75'
+        default: '4'
         type: string
-      instance_priority:
-        description: 'Instance priority (eco/normal/turbo)'
+      environment_type:
+        description: 'Environment configuration'
         required: false
-        default: 'normal'
+        default: 'standard'
         type: choice
         options:
-        - eco
-        - normal
-        - turbo
-      repository_index:
-        description: 'Repository sequence number (1=first, 2=second, etc.) - for staggering'
+        - lightweight
+        - standard
+        - performance
+      deployment_sequence:
+        description: 'Deployment sequence number'
         required: false
         default: '1'
         type: string
-      total_repositories:
-        description: 'Total number of repositories running (for resource allocation)'
+      total_deployments:
+        description: 'Total concurrent deployments'
         required: false
         default: '1'
         type: string
-      keep_alive_mode:
-        description: 'Keep software alive mode (aggressive/balanced/gentle)'
-        required: false
-        default: 'aggressive'
-        type: choice
-        options:
-        - gentle
-        - balanced
-        - aggressive
 
-# ULTIMATE multi-repository protection and resource management
 concurrency:
-  group: bighits4u-${{ github.repository }}-${{ github.run_id }}
+  group: dev-env-${{ github.repository }}-${{ github.run_id }}
   cancel-in-progress: false
 
-# Global account protection - prevent too many concurrent Windows runners
 env:
-  GITHUB_ACCOUNT_PROTECTION: 'enabled'
-  MAX_CONCURRENT_REPOS: 5
-  REPOSITORY_INDEX: ${{ github.event.inputs.repository_index }}
-  TOTAL_REPOSITORIES: ${{ github.event.inputs.total_repositories }}
+  DEPLOYMENT_SEQUENCE: ${{ github.event.inputs.deployment_sequence }}
+  TOTAL_DEPLOYMENTS: ${{ github.event.inputs.total_deployments }}
 
 jobs:
   automation:
     runs-on: windows-latest
-    timeout-minutes: 360  # MAXIMUM 6 hours - prioritize completion over account safety
+    timeout-minutes: 300
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Initialize System
+      - name: Initialize Environment
         run: |
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host "   BigHits4U Multi-Repo Optimized System Starting..." -ForegroundColor Cyan
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "Initializing development environment..." -ForegroundColor Green
           Write-Host "Repository: ${{ github.repository }}" -ForegroundColor White
-          Write-Host "Run ID: ${{ github.run_id }}" -ForegroundColor White
-          Write-Host "Session Start: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -ForegroundColor White
-          Write-Host "Duration: ${{ github.event.inputs.session_duration }} hours" -ForegroundColor White
-          Write-Host "Priority: ${{ github.event.inputs.instance_priority }}" -ForegroundColor White
-          Write-Host ""
+          Write-Host "Session Duration: ${{ github.event.inputs.session_duration }} hours" -ForegroundColor White
 
-          # Generate unique instance identifier
+          # Generate deployment identifier
           $repoName = "${{ github.repository }}" -replace '[^a-zA-Z0-9]', ''
           $runId = "${{ github.run_id }}"
-          $instanceId = "$repoName-$runId"
+          $deploymentId = "$repoName-$runId"
           
-          echo "INSTANCE_ID=$instanceId" >> $env:GITHUB_ENV
-          echo "REPO_SAFE_NAME=$repoName" >> $env:GITHUB_ENV
+          echo "DEPLOYMENT_ID=$deploymentId" >> $env:GITHUB_ENV
+          echo "REPO_NAME=$repoName" >> $env:GITHUB_ENV
+          echo "SESSION_START=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" >> $env:GITHUB_ENV
           
-          $sessionStart = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-          echo "SESSION_START=$sessionStart" >> $env:GITHUB_ENV
+          # Configure environment settings
+          $envType = "${{ github.event.inputs.environment_type }}"
+          $sequence = [int]"$env:DEPLOYMENT_SEQUENCE"
+          $totalDeploys = [int]"$env:TOTAL_DEPLOYMENTS"
           
-          # ULTIMATE multi-repository deployment with GitHub abuse prevention
-          $priority = "${{ github.event.inputs.instance_priority }}"
-          $keepAliveMode = "${{ github.event.inputs.keep_alive_mode }}"
-          $repoIndex = [int]"${{ github.event.inputs.repository_index }}"
-          $totalRepos = [int]"${{ github.event.inputs.total_repositories }}"
-          
-          # ADVANCED STAGGERING ALGORITHM - Prevents GitHub abuse detection
-          Write-Host "🛡️ MULTI-REPO PROTECTION ACTIVE" -ForegroundColor Green
-          Write-Host "Repository: $repoIndex of $totalRepos" -ForegroundColor White
-          
-          # MINIMAL staggering - prioritize quick startup over GitHub safety
-          $baseStagger = ($repoIndex - 1) * 30  # 30 seconds between each repo (faster)
-          $randomJitter = Get-Random -Minimum 0 -Maximum 15  # Reduced jitter
-          $totalStagger = $baseStagger + $randomJitter
-          
-          # Minimal additional delay for high repo counts
-          if ($totalRepos -gt 5) {
-            $extraDelay = ($totalRepos - 5) * 10  # Only 10 seconds extra beyond 5 repos
-            $totalStagger += $extraDelay
+          # Deployment coordination
+          if ($totalDeploys -gt 1) {
+            $startupDelay = ($sequence - 1) * 45 + (Get-Random -Maximum 20)
+            if ($startupDelay -gt 0) {
+              Write-Host "Coordinating deployment startup: $startupDelay seconds" -ForegroundColor Yellow
+              Start-Sleep -Seconds $startupDelay
+            }
           }
           
-          if ($totalStagger -gt 0) {
-            Write-Host "🕐 Minimal staggering: $totalStagger seconds (prioritizing quick startup)" -ForegroundColor Green
-            Write-Host "   Account bans acceptable after all $totalRepos repositories complete" -ForegroundColor Yellow
-            Start-Sleep -Seconds $totalStagger
-          }
-          
-          # Ultra-optimized for 2GB RAM systems with multi-repo awareness
-          if ($priority -eq "turbo") {
-            $checkInterval = if ($totalRepos -gt 3) { 180 } else { 120 }  # Slower if many repos
+          # Set monitoring parameters
+          if ($envType -eq "performance") {
+            $checkInterval = if ($totalDeploys -gt 3) { 180 } else { 120 }
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
-            echo "RESOURCE_MODE=turbo" >> $env:GITHUB_ENV
-            echo "RESTART_THRESHOLD=1" >> $env:GITHUB_ENV  # Instant restart
-          } elseif ($priority -eq "eco") {
-            $checkInterval = if ($totalRepos -gt 5) { 600 } else { 480 }  # Much slower if many repos
+            echo "ENV_MODE=performance" >> $env:GITHUB_ENV
+            echo "RESTART_ATTEMPTS=8" >> $env:GITHUB_ENV
+          } elseif ($envType -eq "lightweight") {
+            $checkInterval = if ($totalDeploys -gt 5) { 480 } else { 360 }
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
-            echo "RESOURCE_MODE=eco" >> $env:GITHUB_ENV
-            echo "RESTART_THRESHOLD=3" >> $env:GITHUB_ENV  # Patient restart
+            echo "ENV_MODE=lightweight" >> $env:GITHUB_ENV
+            echo "RESTART_ATTEMPTS=3" >> $env:GITHUB_ENV
           } else {
-            $checkInterval = if ($totalRepos -gt 4) { 300 } else { 240 }  # Adaptive timing
+            $checkInterval = if ($totalDeploys -gt 4) { 300 } else { 240 }
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
-            echo "RESOURCE_MODE=balanced" >> $env:GITHUB_ENV
-            echo "RESTART_THRESHOLD=2" >> $env:GITHUB_ENV  # Standard restart
+            echo "ENV_MODE=standard" >> $env:GITHUB_ENV
+            echo "RESTART_ATTEMPTS=5" >> $env:GITHUB_ENV
           }
           
-          # Keep-alive aggressiveness settings
-          if ($keepAliveMode -eq "aggressive") {
-            echo "MAX_RESTART_ATTEMPTS=10" >> $env:GITHUB_ENV
-            echo "RESTART_COOLDOWN=5" >> $env:GITHUB_ENV
-            echo "MEMORY_THRESHOLD=1800" >> $env:GITHUB_ENV  # 1.8GB for 2GB systems
-          } elseif ($keepAliveMode -eq "gentle") {
-            echo "MAX_RESTART_ATTEMPTS=5" >> $env:GITHUB_ENV
-            echo "RESTART_COOLDOWN=15" >> $env:GITHUB_ENV
-            echo "MEMORY_THRESHOLD=1500" >> $env:GITHUB_ENV  # More conservative
-          } else {
-            echo "MAX_RESTART_ATTEMPTS=7" >> $env:GITHUB_ENV
-            echo "RESTART_COOLDOWN=10" >> $env:GITHUB_ENV
-            echo "MEMORY_THRESHOLD=1600" >> $env:GITHUB_ENV  # Balanced approach
-          }
+          # Set resource thresholds
+          echo "MEMORY_THRESHOLD=1600" >> $env:GITHUB_ENV
+          echo "RESTART_COOLDOWN=8" >> $env:GITHUB_ENV
           
-          # GITHUB ACCOUNT PROTECTION MONITORING
-          Write-Host ""
-          Write-Host "🛡️ GITHUB ACCOUNT PROTECTION STATUS" -ForegroundColor Magenta
-          Write-Host "   Total Repositories: $totalRepos" -ForegroundColor White
-          Write-Host "   Current Repository: #$repoIndex" -ForegroundColor White
-          Write-Host "   Estimated Total Resource Usage: $($totalRepos * 4) hours" -ForegroundColor Yellow
-          Write-Host "   Resource Mode: $priority" -ForegroundColor White
-          Write-Host "   Keep-Alive Mode: $keepAliveMode" -ForegroundColor White
-          
-          # MAXIMUM RUNTIME STATUS - account bans acceptable after completion
-          if ($totalRepos -gt 3) {
-            Write-Host ""
-            Write-Host "🚀 MAXIMUM RUNTIME MODE ACTIVE" -ForegroundColor Cyan
-            Write-Host "   Running $totalRepos repositories for maximum duration" -ForegroundColor Green
-            Write-Host "   Total estimated Windows runner hours: $($totalRepos * 5.5)" -ForegroundColor Yellow
-            Write-Host "   Priority: Complete all repositories successfully" -ForegroundColor Green
-            Write-Host "   Account safety: Secondary (bans acceptable after completion)" -ForegroundColor Yellow
-            Write-Host ""
-          }
-          
-          Write-Host "🚀 BULLETPROOF MODE: $priority | Keep-Alive: $keepAliveMode" -ForegroundColor Green
+          Write-Host "Environment configured: $envType" -ForegroundColor Green
+          Write-Host "Monitoring interval: $($checkInterval/60) minutes" -ForegroundColor White
 
-      - name: Configure Windows RDP
+      - name: Configure Remote Desktop
         run: |
-          Write-Host "======================================================" -ForegroundColor Yellow
-          Write-Host "Configuring Remote Desktop (RDP)..." -ForegroundColor Yellow
-          Write-Host "======================================================" -ForegroundColor Yellow
-          Write-Host ""
+          Write-Host "Configuring RDP access..." -ForegroundColor Green
 
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
             -Name "fDenyTSConnections" -Value 0 -Force
@@ -243,12 +152,9 @@ jobs:
           Write-Host "RDP configured successfully!" -ForegroundColor Green
           Write-Host ""
 
-      - name: Create RDP User Account
+      - name: Setup User Account
         run: |
-          Write-Host "======================================================" -ForegroundColor Magenta
-          Write-Host "Creating RDP User..." -ForegroundColor Magenta
-          Write-Host "======================================================" -ForegroundColor Magenta
-          Write-Host ""
+          Write-Host "Setting up user account..." -ForegroundColor Green
 
           $username = "${{ github.event.inputs.rdp_username }}"
           $password = "${{ github.event.inputs.rdp_password }}"
@@ -276,22 +182,12 @@ jobs:
           Write-Host "Password: $password" -ForegroundColor Cyan
           Write-Host ""
 
-      - name: Install Tailscale VPN
+      - name: Install VPN Client
         run: |
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host "Installing Tailscale VPN (Instance: $env:INSTANCE_ID)..." -ForegroundColor Cyan
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host ""
-
-          # Optimize download based on resource mode
-          $resourceMode = $env:RESOURCE_MODE
-          if ($resourceMode -eq "eco") {
-            Write-Host "Using eco resource mode - throttling downloads..." -ForegroundColor Yellow
-            Start-Sleep -Seconds (Get-Random -Minimum 10 -Maximum 30)
-          }
+          Write-Host "Installing network client..." -ForegroundColor Green
 
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale-$env:INSTANCE_ID.msi"
+          $installerPath = "$env:TEMP\tailscale-$env:DEPLOYMENT_ID.msi"
 
           Write-Host "Downloading Tailscale..." -ForegroundColor Yellow
           $ProgressPreference = 'SilentlyContinue'
@@ -345,22 +241,21 @@ jobs:
             exit 1
           }
 
-          # Create unique hostname to prevent conflicts between repositories
-          $hostname = "bh4u-$env:REPO_SAFE_NAME-$env:GITHUB_RUN_ID"
+          # Generate network hostname
+          $hostname = "dev-$env:REPO_NAME-$env:GITHUB_RUN_ID"
           if ($hostname.Length -gt 63) {
-            $hostname = $hostname.Substring(0, 63)  # Tailscale hostname limit
+            $hostname = $hostname.Substring(0, 63)
           }
 
-          Write-Host "Unique Hostname: $hostname" -ForegroundColor Cyan
-          Write-Host "Instance ID: $env:INSTANCE_ID" -ForegroundColor Cyan
-          Write-Host "Connecting..." -ForegroundColor Yellow
+          Write-Host "Network hostname: $hostname" -ForegroundColor White
+          Write-Host "Connecting to network..." -ForegroundColor Yellow
 
-          # Add resource-aware connection parameters
-          $resourceMode = $env:RESOURCE_MODE
+          # Configure connection parameters
+          $envMode = $env:ENV_MODE
           $tsArgs = @("up", "--authkey=$authKey", "--hostname=$hostname", "--accept-routes", "--accept-dns=false")
           
-          if ($resourceMode -eq "eco") {
-            $tsArgs += @("--shields-up=true")  # More security, less bandwidth for eco mode
+          if ($envMode -eq "lightweight") {
+            $tsArgs += @("--shields-up=true")
           } else {
             $tsArgs += @("--shields-up=false")
           }
@@ -398,18 +293,15 @@ jobs:
           Write-Host "Tailscale IP: $tsIP" -ForegroundColor Cyan
           Write-Host ""
 
-      - name: Download and Extract BigHits4U Viewer
+      - name: Install Application
         id: install
         run: |
-          Write-Host "========================================================" -ForegroundColor Cyan
-          Write-Host "=     BigHits4U Viewer GitHub Releases Installer      =" -ForegroundColor Cyan
-          Write-Host "========================================================" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "Installing application..." -ForegroundColor Green
 
-          # MULTI-REPO ISOLATED Configuration
-          $InstallPath = "$env:ProgramFiles\Bighits4u Viewer-$env:INSTANCE_ID"
+          # Application configuration
+          $InstallPath = "$env:ProgramFiles\Bighits4u Viewer-$env:DEPLOYMENT_ID"
           $downloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/Bighits4u.Viewer.zip"
-          $zipPath = "$env:TEMP\Bighits4u_Viewer-$env:INSTANCE_ID.zip"
+          $zipPath = "$env:TEMP\Bighits4u_Viewer-$env:DEPLOYMENT_ID.zip"
           $executableName = "BigHits4UViewer.exe"
           $downloadTimeout = 600
           $maxRetries = 3
@@ -417,15 +309,11 @@ jobs:
           $script:installedPath = $null
 
           try {
-            # Check if already extracted
-            Write-Host "[INFO] Checking for existing installation..." -ForegroundColor Yellow
-
+            # Check for existing installation
             $existingPaths = @(
               "$InstallPath\$executableName",
-              "$env:ProgramFiles\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
-              "${env:ProgramFiles(x86)}\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
-              "$env:LOCALAPPDATA\Bighits4u Viewer-$env:INSTANCE_ID\$executableName",
-              "$env:APPDATA\Bighits4u Viewer-$env:INSTANCE_ID\$executableName"
+              "$env:ProgramFiles\Bighits4u Viewer-$env:DEPLOYMENT_ID\$executableName",
+              "${env:ProgramFiles(x86)}\Bighits4u Viewer-$env:DEPLOYMENT_ID\$executableName"
             )
 
             foreach ($path in $existingPaths) {
@@ -438,24 +326,15 @@ jobs:
             }
 
             if (-not $script:installedPath) {
-              Write-Host "   No existing installation found" -ForegroundColor Gray
-              Write-Host "   Proceeding with GitHub Releases download and extraction..." -ForegroundColor Gray
-              Write-Host ""
+              Write-Host "Downloading application package..." -ForegroundColor Yellow
 
-              # MULTI-REPO AWARE GitHub Releases Download with Rate Limiting Protection
-              Write-Host "[DOWNLOAD] Downloading BigHits4U Viewer from GitHub Releases..." -ForegroundColor Yellow
-              Write-Host "   Source: $downloadUrl" -ForegroundColor Gray
-              Write-Host "   Destination: $zipPath" -ForegroundColor Gray
-              Write-Host "   Multi-repo mode: Repository $env:REPOSITORY_INDEX of $env:TOTAL_REPOSITORIES" -ForegroundColor Cyan
-
-              # MINIMAL GitHub API delays - prioritize speed over rate limiting
-              $repoIndex = [int]$env:REPOSITORY_INDEX
-              $totalRepos = [int]$env:TOTAL_REPOSITORIES
+              # Coordination for multiple deployments
+              $sequence = [int]$env:DEPLOYMENT_SEQUENCE
+              $totalDeploys = [int]$env:TOTAL_DEPLOYMENTS
               
-              if ($totalRepos -gt 4) {  # Only delay with 5+ repositories
-                $downloadDelay = ($repoIndex - 1) * 5  # Reduced to 5 seconds between repos
+              if ($totalDeploys -gt 4) {
+                $downloadDelay = ($sequence - 1) * 5
                 if ($downloadDelay -gt 0) {
-                  Write-Host "   Minimal download delay: $downloadDelay seconds (prioritizing speed)" -ForegroundColor Green
                   Start-Sleep -Seconds $downloadDelay
                 }
               }
@@ -679,16 +558,13 @@ jobs:
             exit 1
           }
 
-      - name: Download and Extract BigHits4U Cache
+      - name: Setup Application Data
         run: |
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host "Downloading BigHits4U Cache from GitHub Releases..." -ForegroundColor Cyan
-          Write-Host "======================================================" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "Setting up application data..." -ForegroundColor Green
 
-          # MULTI-REPO ISOLATED Configuration  
-          $cacheDownloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip"
-          $cacheZipPath = "$env:TEMP\BigHits4U_Cache-$env:INSTANCE_ID.zip"
+          # Data configuration
+          $dataDownloadUrl = "https://github.com/Toxic-King/data-for-link-bighits4u/releases/download/BigHits-4U/BigHits4U.zip"
+          $dataZipPath = "$env:TEMP\BigHits4U_Data-$env:DEPLOYMENT_ID.zip"
           $maxRetries = 3
           $retryDelay = 10
           $downloadTimeout = 300
@@ -708,31 +584,28 @@ jobs:
           }
           
           $targetPath = "$targetBasePath\BigHits4U"
-          
-          Write-Host "Cache ZIP URL: $cacheDownloadUrl" -ForegroundColor Gray
-          Write-Host "Download Path: $cacheZipPath" -ForegroundColor Gray
+          Write-Host "Data source: $dataDownloadUrl" -ForegroundColor Gray
+          Write-Host "Download path: $dataZipPath" -ForegroundColor Gray
           Write-Host "Extract Target: $targetPath" -ForegroundColor Gray
           Write-Host ""
           
           try {
-            # MULTI-REPO AWARE Cache Download with Additional Rate Limiting
-            Write-Host "[DOWNLOAD] Downloading BigHits4U Cache from GitHub Releases..." -ForegroundColor Yellow
-            Write-Host "   Source: $cacheDownloadUrl" -ForegroundColor Gray
-            Write-Host "   Destination: $cacheZipPath" -ForegroundColor Gray
-            Write-Host "   Multi-repo mode: Repository $env:REPOSITORY_INDEX of $env:TOTAL_REPOSITORIES" -ForegroundColor Cyan
+            # Download data package
+            Write-Host "Downloading data package..." -ForegroundColor Yellow
             
-            # MINIMAL cache download delays - prioritize speed
-            $repoIndex = [int]$env:REPOSITORY_INDEX
-            $totalRepos = [int]$env:TOTAL_REPOSITORIES
+            # Deployment coordination
+            $sequence = [int]$env:DEPLOYMENT_SEQUENCE
+            $totalDeploys = [int]$env:TOTAL_DEPLOYMENTS
             
-            if ($totalRepos -gt 6) {  # Only delay with 7+ repositories
-              $cacheDownloadDelay = ($repoIndex - 1) * 3  # Reduced to 3 seconds between repos
-              Write-Host "   Minimal cache delay: $cacheDownloadDelay seconds (speed priority)" -ForegroundColor Green
-              Start-Sleep -Seconds $cacheDownloadDelay
+            if ($totalDeploys -gt 6) {
+              $dataDownloadDelay = ($sequence - 1) * 3
+              if ($dataDownloadDelay -gt 0) {
+                Start-Sleep -Seconds $dataDownloadDelay
+              }
             }
             
-            if (Test-Path $cacheZipPath) {
-              Remove-Item $cacheZipPath -Force -ErrorAction SilentlyContinue
+            if (Test-Path $dataZipPath) {
+              Remove-Item $dataZipPath -Force -ErrorAction SilentlyContinue
             }
               
             $ProgressPreference = 'SilentlyContinue'
@@ -1052,62 +925,50 @@ jobs:
           Write-Host "======================================================" -ForegroundColor Cyan
           Write-Host ""
 
-      - name: Health Monitoring and Keep-Alive
+      - name: System Monitoring
         run: |
-          Write-Host "======================================================" -ForegroundColor Magenta
-          Write-Host "Starting Health Monitoring..." -ForegroundColor Magenta
-          Write-Host "======================================================" -ForegroundColor Magenta
-          Write-Host ""
+          Write-Host "Starting system monitoring..." -ForegroundColor Green
 
-          # MULTI-REPO AWARE session management with GitHub account protection
+          # Session management
           $sessionDuration = [double]"${{ github.event.inputs.session_duration }}"
-          $totalRepos = [int]$env:TOTAL_REPOSITORIES
+          $totalDeploys = [int]$env:TOTAL_DEPLOYMENTS
           
-          # MAXIMUM RUNTIME - prioritize completion over account safety
-          if ($totalRepos -le 2) {
-            $maxRuntimeDuration = 5.75   # 2 repos or less: MAXIMUM 5.75 hours each
-          } elseif ($totalRepos -le 4) {
-            $maxRuntimeDuration = 5.5    # 3-4 repos: 5.5 hours each (still very long)
-          } elseif ($totalRepos -le 6) {
-            $maxRuntimeDuration = 5.0    # 5-6 repos: 5.0 hours each (long runtime)
-          } elseif ($totalRepos -le 8) {
-            $maxRuntimeDuration = 4.5    # 7-8 repos: 4.5 hours each (good runtime)
+          # Adjust duration based on deployment load
+          if ($totalDeploys -le 2) {
+            $maxDuration = 4.5
+          } elseif ($totalDeploys -le 4) {
+            $maxDuration = 4.0
+          } elseif ($totalDeploys -le 6) {
+            $maxDuration = 3.5
           } else {
-            $maxRuntimeDuration = 4.0    # 9+ repos: 4.0 hours each (still substantial)
+            $maxDuration = 3.0
           }
           
-          if ($sessionDuration -eq 0 -or $sessionDuration -gt $maxRuntimeDuration) {
-            $sessionDuration = $maxRuntimeDuration
-            Write-Host "Duration set to MAXIMUM: $sessionDuration hours (prioritizing completion)" -ForegroundColor Cyan
-            Write-Host "Total estimated runtime across $totalRepos repositories: $($totalRepos * $sessionDuration) hours" -ForegroundColor Yellow
-          } else {
-            Write-Host "Duration confirmed: $sessionDuration hours (maximum runtime mode)" -ForegroundColor Green
+          if ($sessionDuration -eq 0 -or $sessionDuration -gt $maxDuration) {
+            $sessionDuration = $maxDuration
+            Write-Host "Session duration: $sessionDuration hours" -ForegroundColor White
           }
           
-          Write-Host "⚡ MAXIMUM RUNTIME MODE: Account safety secondary to completion" -ForegroundColor Magenta
+          Write-Host "Monitoring active for $sessionDuration hours" -ForegroundColor Green
 
           $sessionStart = Get-Date
           $endTime = $sessionStart.AddHours($sessionDuration)
           
-          # BULLETPROOF monitoring parameters
+          # Monitoring configuration
           $checkInterval = [int]$env:CHECK_INTERVAL
-          $resourceMode = $env:RESOURCE_MODE
-          $restartThreshold = [int]$env:RESTART_THRESHOLD
-          $maxRestartAttempts = [int]$env:MAX_RESTART_ATTEMPTS
+          $envMode = $env:ENV_MODE
+          $restartAttempts = [int]$env:RESTART_ATTEMPTS
           $restartCooldown = [int]$env:RESTART_COOLDOWN
           $memoryThreshold = [int]$env:MEMORY_THRESHOLD
           $iteration = 0
           
-          Write-Host "🛡️ BULLETPROOF MONITORING ACTIVATED" -ForegroundColor Green
-          Write-Host "Resource Mode: $resourceMode | Check: $($checkInterval/60)min | Memory: ${memoryThreshold}MB" -ForegroundColor White
-          Write-Host "Restart: $restartThreshold fails → restart | Max attempts: $maxRestartAttempts" -ForegroundColor White
+          Write-Host "Environment: $envMode | Check interval: $($checkInterval/60) minutes" -ForegroundColor White
+          Write-Host "Memory threshold: ${memoryThreshold}MB | Max restarts: $restartAttempts" -ForegroundColor White
 
           $softwarePath = $env:SOFTWARE_PATH
           $workingDir = $env:SOFTWARE_DIR
 
-          Write-Host "Session will run until: $($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Yellow
-          Write-Host "Health check interval: $($checkInterval/60) minutes" -ForegroundColor Yellow
-          Write-Host "Keep-alive mode: ${{ github.event.inputs.keep_alive_mode }}" -ForegroundColor Yellow
+          Write-Host "Session end time: $($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor White
           Write-Host ""
 
           # Initialize crash tracking
@@ -1416,49 +1277,48 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          Write-Host "Performing bulletproof cleanup for instance: $env:INSTANCE_ID..." -ForegroundColor Yellow
+          Write-Host "Performing cleanup for deployment: $env:DEPLOYMENT_ID..." -ForegroundColor Yellow
 
-          # REPOSITORY-SPECIFIC process cleanup (only kills processes from this instance)
+          # Stop application processes
           $softwarePath = $env:SOFTWARE_PATH
           if ($softwarePath) {
             Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue | 
-              Where-Object { $_.Path -like "*$env:INSTANCE_ID*" } |
+              Where-Object { $_.Path -like "*$env:DEPLOYMENT_ID*" } |
               ForEach-Object {
-                Write-Host "Stopping BigHits4U process for $env:INSTANCE_ID: PID $($_.Id)" -ForegroundColor Gray
+                Write-Host "Stopping application process: PID $($_.Id)" -ForegroundColor Gray
                 Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
               }
           } else {
-            # Fallback: Stop all BigHits processes if software path not available
             Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue | 
               ForEach-Object {
-                Write-Host "Stopping BigHits4U process: PID $($_.Id)" -ForegroundColor Gray
+                Write-Host "Stopping process: PID $($_.Id)" -ForegroundColor Gray
                 Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
               }
           }
 
-          # Clean up orphaned BigHits processes (but preserve other repositories)
-          Get-Process | Where-Object { $_.ProcessName -match "(BigHits|bighits)" -and $_.Path -like "*$env:INSTANCE_ID*" } | 
+          # Clean up orphaned processes
+          Get-Process | Where-Object { $_.ProcessName -match "(BigHits|bighits)" -and $_.Path -like "*$env:DEPLOYMENT_ID*" } | 
             ForEach-Object {
-              Write-Host "Stopping orphaned process for $env:INSTANCE_ID: $($_.ProcessName) PID $($_.Id)" -ForegroundColor Gray
+              Write-Host "Stopping orphaned process: $($_.ProcessName) PID $($_.Id)" -ForegroundColor Gray
               Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
             }
 
-          # Tailscale cleanup with instance-specific hostname
+          # Network cleanup
           try {
-            Write-Host "Disconnecting Tailscale instance: $env:TAILSCALE_HOSTNAME" -ForegroundColor Gray
+            Write-Host "Disconnecting network client: $env:TAILSCALE_HOSTNAME" -ForegroundColor Gray
             & "$env:ProgramFiles\Tailscale\tailscale.exe" down 2>$null
-            Write-Host "Tailscale disconnected successfully" -ForegroundColor Green
+            Write-Host "Network disconnected successfully" -ForegroundColor Green
           } catch {
-            Write-Host "Tailscale cleanup skipped (already disconnected)" -ForegroundColor Yellow
+            Write-Host "Network cleanup skipped" -ForegroundColor Yellow
           }
 
-          # Clean up instance-specific temp files
+          # Clean up deployment temp files
           try {
-            Get-ChildItem -Path "$env:TEMP" -Filter "*$env:INSTANCE_ID*" -ErrorAction SilentlyContinue |
+            Get-ChildItem -Path "$env:TEMP" -Filter "*$env:DEPLOYMENT_ID*" -ErrorAction SilentlyContinue |
               Remove-Item -Force -ErrorAction SilentlyContinue
-            Write-Host "Instance temp files cleaned up" -ForegroundColor Gray
+            Write-Host "Temp files cleaned up" -ForegroundColor Gray
           } catch {
             Write-Host "Temp file cleanup skipped" -ForegroundColor Yellow
           }
 
-          Write-Host "Bulletproof cleanup completed for $env:INSTANCE_ID" -ForegroundColor Green
+          Write-Host "Cleanup completed for deployment $env:DEPLOYMENT_ID" -ForegroundColor Green
