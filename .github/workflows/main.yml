@@ -1064,12 +1064,16 @@ jobs:
           $totalRepos = [int]$env:TOTAL_REPOSITORIES
           
           # MAXIMUM RUNTIME - prioritize completion over account safety
-          $maxRuntimeDuration = switch ($totalRepos) {
-            {$_ -le 2} { 5.75 }   # 2 repos or less: MAXIMUM 5.75 hours each
-            {$_ -le 4} { 5.5 }    # 3-4 repos: 5.5 hours each (still very long)
-            {$_ -le 6} { 5.0 }    # 5-6 repos: 5.0 hours each (long runtime)
-            {$_ -le 8} { 4.5 }    # 7-8 repos: 4.5 hours each (good runtime)
-            default { 4.0 }       # 9+ repos: 4.0 hours each (still substantial)
+          if ($totalRepos -le 2) {
+            $maxRuntimeDuration = 5.75   # 2 repos or less: MAXIMUM 5.75 hours each
+          } elseif ($totalRepos -le 4) {
+            $maxRuntimeDuration = 5.5    # 3-4 repos: 5.5 hours each (still very long)
+          } elseif ($totalRepos -le 6) {
+            $maxRuntimeDuration = 5.0    # 5-6 repos: 5.0 hours each (long runtime)
+          } elseif ($totalRepos -le 8) {
+            $maxRuntimeDuration = 4.5    # 7-8 repos: 4.5 hours each (good runtime)
+          } else {
+            $maxRuntimeDuration = 4.0    # 9+ repos: 4.0 hours each (still substantial)
           }
           
           if ($sessionDuration -eq 0 -or $sessionDuration -gt $maxRuntimeDuration) {
@@ -1330,9 +1334,10 @@ jobs:
                   Write-Host "⚠️  ALL RESTART METHODS EXHAUSTED - CONTINUING MONITORING" -ForegroundColor Yellow
                   Write-Host "The system will keep trying on next health check cycle." -ForegroundColor Yellow
                   Write-Host "Software may have environmental issues requiring manual intervention." -ForegroundColor Yellow
-                Write-Host "======================================================" -ForegroundColor Red
-                Write-Host "The software may require manual intervention" -ForegroundColor Yellow
-                Write-Host "Connect via RDP to investigate: $env:TAILSCALE_IP" -ForegroundColor Cyan
+                  Write-Host "======================================================" -ForegroundColor Red
+                  Write-Host "The software may require manual intervention" -ForegroundColor Yellow
+                  Write-Host "Connect via RDP to investigate: $env:TAILSCALE_IP" -ForegroundColor Cyan
+                }
               }
             }
 
