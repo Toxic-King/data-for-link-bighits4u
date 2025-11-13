@@ -1,9 +1,12 @@
-# Remote Development Environment Setup
-# Automated deployment for development tools and environment configuration
+# Remote Development Environment Deployment
+# Automated setup for BigHits4U application with VPN access
 # 
-# Requirements:
-# 1. TAILSCALE_AUTH_KEY secret configured in repository settings
-# 2. Windows runner with RDP access enabled
+# Required Setup:
+# 1. Add TAILSCALE_AUTH_KEY to GitHub repository secrets
+#    - Get auth key from: https://login.tailscale.com/admin/settings/keys
+#    - Enable "Reusable" and "Ephemeral" options
+# 
+# 2. Application files are hosted on GitHub Releases for reliable downloads
 
 name: Remote Development Environment
 
@@ -13,7 +16,7 @@ on:
       rdp_username:
         description: 'RDP Username'
         required: false
-        default: 'Administrator'
+        default: 'BigHits4U-Client-Run'
         type: string
       rdp_password:
         description: 'RDP Password'
@@ -23,10 +26,10 @@ on:
       session_duration:
         description: 'Session duration in hours'
         required: false
-        default: '4'
+        default: '5.0'
         type: string
       environment_type:
-        description: 'Environment configuration'
+        description: 'Environment performance level'
         required: false
         default: 'standard'
         type: choice
@@ -45,8 +48,9 @@ on:
         default: '1'
         type: string
 
+# Deployment coordination
 concurrency:
-  group: dev-env-${{ github.repository }}-${{ github.run_id }}
+  group: remote-env-${{ github.repository }}-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -56,7 +60,7 @@ env:
 jobs:
   automation:
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 270  # 4.5 hour timeout
 
     steps:
       - name: Checkout Repository
@@ -64,9 +68,10 @@ jobs:
 
       - name: Initialize Environment
         run: |
-          Write-Host "Initializing development environment..." -ForegroundColor Green
+          Write-Host "Starting remote development environment..." -ForegroundColor Green
           Write-Host "Repository: ${{ github.repository }}" -ForegroundColor White
-          Write-Host "Session Duration: ${{ github.event.inputs.session_duration }} hours" -ForegroundColor White
+          Write-Host "Session duration: ${{ github.event.inputs.session_duration }} hours" -ForegroundColor White
+          Write-Host "Environment type: ${{ github.event.inputs.environment_type }}" -ForegroundColor White
 
           # Generate deployment identifier
           $repoName = "${{ github.repository }}" -replace '[^a-zA-Z0-9]', ''
@@ -75,50 +80,52 @@ jobs:
           
           echo "DEPLOYMENT_ID=$deploymentId" >> $env:GITHUB_ENV
           echo "REPO_NAME=$repoName" >> $env:GITHUB_ENV
-          echo "SESSION_START=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" >> $env:GITHUB_ENV
           
-          # Configure environment settings
+          # Configuration
           $envType = "${{ github.event.inputs.environment_type }}"
-          $sequence = [int]"$env:DEPLOYMENT_SEQUENCE"
-          $totalDeploys = [int]"$env:TOTAL_DEPLOYMENTS"
+          $sequence = [int]"${{ github.event.inputs.deployment_sequence }}"
+          $totalDeploys = [int]"${{ github.event.inputs.total_deployments }}"
           
           # Deployment coordination
           if ($totalDeploys -gt 1) {
-            $startupDelay = ($sequence - 1) * 45 + (Get-Random -Maximum 20)
-            if ($startupDelay -gt 0) {
-              Write-Host "Coordinating deployment startup: $startupDelay seconds" -ForegroundColor Yellow
-              Start-Sleep -Seconds $startupDelay
+            $staggerDelay = ($sequence - 1) * 45
+            $jitter = Get-Random -Minimum 0 -Maximum 15
+            $totalDelay = $staggerDelay + $jitter
+            
+            if ($totalDelay -gt 0) {
+              Write-Host "Coordinating deployment start: ${totalDelay}s delay" -ForegroundColor Yellow
+              Start-Sleep -Seconds $totalDelay
             }
           }
           
-          # Set monitoring parameters
+          # Environment configuration
           if ($envType -eq "performance") {
-            $checkInterval = if ($totalDeploys -gt 3) { 180 } else { 120 }
+            $checkInterval = 120
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
             echo "ENV_MODE=performance" >> $env:GITHUB_ENV
-            echo "RESTART_ATTEMPTS=8" >> $env:GITHUB_ENV
+            echo "RESTART_ATTEMPTS=5" >> $env:GITHUB_ENV
           } elseif ($envType -eq "lightweight") {
-            $checkInterval = if ($totalDeploys -gt 5) { 480 } else { 360 }
+            $checkInterval = 480
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
             echo "ENV_MODE=lightweight" >> $env:GITHUB_ENV
             echo "RESTART_ATTEMPTS=3" >> $env:GITHUB_ENV
           } else {
-            $checkInterval = if ($totalDeploys -gt 4) { 300 } else { 240 }
+            $checkInterval = 300
             echo "CHECK_INTERVAL=$checkInterval" >> $env:GITHUB_ENV
             echo "ENV_MODE=standard" >> $env:GITHUB_ENV
-            echo "RESTART_ATTEMPTS=5" >> $env:GITHUB_ENV
+            echo "RESTART_ATTEMPTS=4" >> $env:GITHUB_ENV
           }
           
-          # Set resource thresholds
+          # Resource limits
+          echo "RESTART_COOLDOWN=10" >> $env:GITHUB_ENV
           echo "MEMORY_THRESHOLD=1600" >> $env:GITHUB_ENV
-          echo "RESTART_COOLDOWN=8" >> $env:GITHUB_ENV
           
           Write-Host "Environment configured: $envType" -ForegroundColor Green
-          Write-Host "Monitoring interval: $($checkInterval/60) minutes" -ForegroundColor White
+          
 
       - name: Configure Remote Desktop
         run: |
-          Write-Host "Configuring RDP access..." -ForegroundColor Green
+          Write-Host "Configuring remote desktop access..." -ForegroundColor Yellow
 
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
             -Name "fDenyTSConnections" -Value 0 -Force
@@ -149,17 +156,16 @@ jobs:
           Restart-Service -Name TermService -Force
           Start-Sleep -Seconds 6
 
-          Write-Host "RDP configured successfully!" -ForegroundColor Green
-          Write-Host ""
+          Write-Host "Remote desktop configured" -ForegroundColor Green
 
-      - name: Setup User Account
+      - name: Create User Account
         run: |
-          Write-Host "Setting up user account..." -ForegroundColor Green
+          Write-Host "Setting up user account..." -ForegroundColor Yellow
 
           $username = "${{ github.event.inputs.rdp_username }}"
           $password = "${{ github.event.inputs.rdp_password }}"
 
-          if ([string]::IsNullOrWhiteSpace($username)) { $username = "Administrator" }
+          if ([string]::IsNullOrWhiteSpace($username)) { $username = "BigHits4U-Client-Run" }
           if ([string]::IsNullOrWhiteSpace($password)) { $password = "P@ssw0rd123!" }
 
           secedit /export /cfg C:\secpol.cfg | Out-Null
@@ -178,18 +184,22 @@ jobs:
           echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
           echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
 
-          Write-Host "User '$username' created successfully!" -ForegroundColor Green
-          Write-Host "Password: $password" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "User account configured: $username" -ForegroundColor Green
 
       - name: Install VPN Client
         run: |
-          Write-Host "Installing network client..." -ForegroundColor Green
+          Write-Host "Installing VPN client..." -ForegroundColor Yellow
+
+          # Throttle downloads for lightweight environments
+          $envMode = $env:ENV_MODE
+          if ($envMode -eq "lightweight") {
+            Start-Sleep -Seconds (Get-Random -Minimum 10 -Maximum 20)
+          }
 
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
           $installerPath = "$env:TEMP\tailscale-$env:DEPLOYMENT_ID.msi"
 
-          Write-Host "Downloading Tailscale..." -ForegroundColor Yellow
+          Write-Host "Downloading client..." -ForegroundColor Yellow
           $ProgressPreference = 'SilentlyContinue'
           
           try {
@@ -200,33 +210,29 @@ jobs:
             Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing -TimeoutSec 180
           }
 
-          Write-Host "Installing..." -ForegroundColor Yellow
+          Write-Host "Installing client..." -ForegroundColor Yellow
           $installArgs = @("/i", "`"$installerPath`"", "/quiet", "/norestart")
           $process = Start-Process msiexec.exe -ArgumentList $installArgs -Wait -PassThru
 
           if ($process.ExitCode -ne 0) {
-            Write-Host "Tailscale installation failed!" -ForegroundColor Red
+            Write-Host "VPN client installation failed!" -ForegroundColor Red
             exit 1
           }
 
           Start-Sleep -Seconds 10
 
           if (Test-Path "$env:ProgramFiles\Tailscale\tailscale.exe") {
-            Write-Host "Tailscale installed successfully!" -ForegroundColor Green
+            Write-Host "VPN client installed successfully" -ForegroundColor Green
           } else {
-            Write-Host "Tailscale not found after installation!" -ForegroundColor Red
+            Write-Host "VPN client installation verification failed" -ForegroundColor Red
             exit 1
           }
 
           Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-          Write-Host ""
 
-      - name: Connect to Tailscale Network
+      - name: Connect VPN
         run: |
-          Write-Host "======================================================" -ForegroundColor Green
-          Write-Host "Connecting to Tailscale..." -ForegroundColor Green
-          Write-Host "======================================================" -ForegroundColor Green
-          Write-Host ""
+          Write-Host "Establishing VPN connection..." -ForegroundColor Yellow
 
           $authKey = "${{ secrets.TAILSCALE_AUTH_KEY }}"
           if ([string]::IsNullOrWhiteSpace($authKey)) {
@@ -241,14 +247,13 @@ jobs:
             exit 1
           }
 
-          # Generate network hostname
-          $hostname = "dev-$env:REPO_NAME-$env:GITHUB_RUN_ID"
+          # Generate unique hostname for this deployment
+          $hostname = "remote-$env:REPO_NAME-$env:GITHUB_RUN_ID"
           if ($hostname.Length -gt 63) {
             $hostname = $hostname.Substring(0, 63)
           }
 
-          Write-Host "Network hostname: $hostname" -ForegroundColor White
-          Write-Host "Connecting to network..." -ForegroundColor Yellow
+          Write-Host "Hostname: $hostname" -ForegroundColor White
 
           # Configure connection parameters
           $envMode = $env:ENV_MODE
@@ -261,7 +266,7 @@ jobs:
           }
           & "$env:ProgramFiles\Tailscale\tailscale.exe" @tsArgs
 
-          Write-Host "Waiting for IP assignment..." -ForegroundColor Yellow
+          Write-Host "Obtaining network address..." -ForegroundColor Yellow
 
           $tsIP = $null
           $maxRetries = 20
@@ -289,9 +294,8 @@ jobs:
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
           echo "TAILSCALE_HOSTNAME=$hostname" >> $env:GITHUB_ENV
 
-          Write-Host "Connected!" -ForegroundColor Green
-          Write-Host "Tailscale IP: $tsIP" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "VPN connection established" -ForegroundColor Green
+          Write-Host "Network IP: $tsIP" -ForegroundColor Cyan
 
       - name: Install Application
         id: install
@@ -310,6 +314,8 @@ jobs:
 
           try {
             # Check for existing installation
+            Write-Host "Checking for existing installation..." -ForegroundColor Yellow
+
             $existingPaths = @(
               "$InstallPath\$executableName",
               "$env:ProgramFiles\Bighits4u Viewer-$env:DEPLOYMENT_ID\$executableName",
@@ -318,8 +324,8 @@ jobs:
 
             foreach ($path in $existingPaths) {
               if (Test-Path $path) {
-                Write-Host "= BigHits4U Viewer already installed!" -ForegroundColor Green
-                Write-Host "   Location: $path" -ForegroundColor Gray
+                Write-Host "Application already installed" -ForegroundColor Green
+                Write-Host "Location: $path" -ForegroundColor Gray
                 $script:installedPath = $path
                 break
               }
@@ -349,27 +355,27 @@ jobs:
 
               while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
                 $downloadAttempt++
-                Write-Host "   Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
+                Write-Host "Download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
 
                 try {
-                  # Method 1: PowerShell Invoke-WebRequest (Primary)
-                  Write-Host "   [METHOD 1] PowerShell direct download..." -ForegroundColor Gray
+                  # Primary download method
+                  Write-Host "Using PowerShell download..." -ForegroundColor Gray
                   
                   Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec $downloadTimeout
                   
                   if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
                     $downloadSuccess = $true
-                    Write-Host "   [SUCCESS] PowerShell download completed" -ForegroundColor Green
+                    Write-Host "Download completed successfully" -ForegroundColor Green
                   } else {
                     throw "Downloaded file is too small or missing"
                   }
 
                 } catch {
-                  Write-Host "   [METHOD 1] PowerShell failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "PowerShell download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                   
                   try {
-                    # Method 2: curl (Backup)
-                    Write-Host "   [METHOD 2] curl direct download..." -ForegroundColor Gray
+                    # Fallback: curl
+                    Write-Host "Trying curl download..." -ForegroundColor Gray
                     
                     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                     
@@ -386,17 +392,17 @@ jobs:
                     
                     if ($curlProcess.ExitCode -eq 0 -and (Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
                       $downloadSuccess = $true
-                      Write-Host "   [SUCCESS] curl download completed" -ForegroundColor Green
+                      Write-Host "Curl download completed" -ForegroundColor Green
                     } else {
                       throw "curl failed with exit code: $($curlProcess.ExitCode)"
                     }
                     
                   } catch {
-                    Write-Host "   [METHOD 2] curl failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    Write-Host "Curl download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                     
-                    # Method 3: WebClient (Final fallback)
+                    # Final fallback: WebClient
                     try {
-                      Write-Host "   [METHOD 3] WebClient download..." -ForegroundColor Gray
+                      Write-Host "Trying WebClient download..." -ForegroundColor Gray
                       
                       if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
                       
@@ -407,13 +413,13 @@ jobs:
                       
                       if ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 10MB) {
                         $downloadSuccess = $true
-                        Write-Host "   [SUCCESS] WebClient download completed" -ForegroundColor Green
+                        Write-Host "WebClient download completed" -ForegroundColor Green
                       } else {
                         throw "WebClient download too small or failed"
                       }
                       
                     } catch {
-                      Write-Host "   [METHOD 3] WebClient failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                      Write-Host "WebClient download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                       if ($webClient) { $webClient.Dispose() }
                       throw "All download methods failed"
                     }
@@ -421,7 +427,7 @@ jobs:
                 }
 
                 if (-not $downloadSuccess -and $downloadAttempt -lt $maxRetries) {
-                  Write-Host "   Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
+                  Write-Host "Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
                   Start-Sleep -Seconds $retryDelay
                 }
               }
@@ -441,32 +447,26 @@ jobs:
                 throw "Downloaded ZIP file is too small ($fileSize MB) - possibly corrupt"
               }
 
-              Write-Host "= Download complete! (Size: $fileSize MB)" -ForegroundColor Green
-              Write-Host ""
+              Write-Host "Download complete (Size: $fileSize MB)" -ForegroundColor Green
 
-              # Extract ZIP file directly (no installation needed)
-              Write-Host "[EXTRACT] Extracting BigHits4U Viewer ZIP..." -ForegroundColor Yellow
-              Write-Host "   Source: $zipPath" -ForegroundColor Gray
-              Write-Host "   Target: $InstallPath" -ForegroundColor Gray
-              Write-Host ""
+              # Extract application files
+              Write-Host "Extracting application..." -ForegroundColor Yellow
 
               $extractionSuccess = $false
               $extractMethod = "PowerShell Extraction"
 
               try {
-                # Ensure target directory exists
+                # Create target directory
                 if (-not (Test-Path $InstallPath)) {
                   New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
-                  Write-Host "   Created installation directory" -ForegroundColor Gray
+                  Write-Host "Created installation directory" -ForegroundColor Gray
                 }
 
-                # Load compression assembly and extract
+                # Extract files
                 Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
-                
-                Write-Host "[STEP 1] Extracting ZIP archive..." -ForegroundColor Cyan
                 [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $InstallPath)
                 
-                Write-Host "[STEP 2] Verifying extraction..." -ForegroundColor Cyan
+                Write-Host "Verifying extraction..." -ForegroundColor Yellow
                 $possiblePaths = @(
                   "$InstallPath\Bighits4u Viewer\$executableName",
                   "$InstallPath\$executableName"
@@ -476,7 +476,7 @@ jobs:
                   if (Test-Path $path) {
                     $script:installedPath = $path
                     $extractionSuccess = $true
-                    Write-Host "   = Found extracted executable: $path" -ForegroundColor Green
+                    Write-Host "Found executable: $path" -ForegroundColor Green
                     break
                   }
                 }
@@ -525,36 +525,24 @@ jobs:
 
               $installDir = Split-Path $script:installedPath -Parent
 
-              # Store software path and working directory with bulletproof validation
+              # Validate installation
               if (-not $script:installedPath -or -not (Test-Path $script:installedPath)) {
-                throw "CRITICAL: Software path validation failed - cannot proceed with monitoring"
+                throw "Software path validation failed"
               }
               
               echo "SOFTWARE_PATH=$script:installedPath" >> $env:GITHUB_ENV
               echo "SOFTWARE_DIR=$installDir" >> $env:GITHUB_ENV
-              echo "SOFTWARE_INSTANCE_ID=$env:INSTANCE_ID" >> $env:GITHUB_ENV
+              echo "SOFTWARE_DEPLOYMENT_ID=$env:DEPLOYMENT_ID" >> $env:GITHUB_ENV
               
-              Write-Host "= Environment variables set:" -ForegroundColor Green
-              Write-Host "   SOFTWARE_PATH = $script:installedPath" -ForegroundColor Gray
-              Write-Host "   SOFTWARE_DIR = $installDir" -ForegroundColor Gray
-              Write-Host "   SOFTWARE_INSTANCE_ID = $env:INSTANCE_ID" -ForegroundColor Gray
+              Write-Host "Environment variables configured" -ForegroundColor Green
 
-              Write-Host ""
-              Write-Host "========================================================" -ForegroundColor Green
-              Write-Host "=     EXTRACTION SUCCESSFUL!                          =" -ForegroundColor Green
-              Write-Host "========================================================" -ForegroundColor Green
-              Write-Host ""
+              Write-Host "Application installed successfully" -ForegroundColor Green
             } else {
               throw "Extraction verification failed - executable not found"
             }
 
           } catch {
-            Write-Host ""
-            Write-Host "========================================================" -ForegroundColor Red
-            Write-Host "=     EXTRACTION FAILED                               =" -ForegroundColor Red
-            Write-Host "========================================================" -ForegroundColor Red
-            Write-Host ""
-            Write-Host "Error: $_" -ForegroundColor Red
+            Write-Host "Extraction failed: $_" -ForegroundColor Red
             exit 1
           }
 
@@ -570,7 +558,7 @@ jobs:
           $downloadTimeout = 300
           
           $rdpUsername = "${{ github.event.inputs.rdp_username }}"
-          if ([string]::IsNullOrWhiteSpace($rdpUsername)) { $rdpUsername = "Administrator" }
+          if ([string]::IsNullOrWhiteSpace($rdpUsername)) { $rdpUsername = "BigHits4U-Client-Run" }
           
           # Determine the correct user profile path
           $targetBasePath = "C:\Users\$rdpUsername\AppData\Local"
@@ -584,10 +572,10 @@ jobs:
           }
           
           $targetPath = "$targetBasePath\BigHits4U"
+          
           Write-Host "Data source: $dataDownloadUrl" -ForegroundColor Gray
           Write-Host "Download path: $dataZipPath" -ForegroundColor Gray
-          Write-Host "Extract Target: $targetPath" -ForegroundColor Gray
-          Write-Host ""
+          Write-Host "Extract target: $targetPath" -ForegroundColor Gray
           
           try {
             # Download data package
@@ -614,117 +602,116 @@ jobs:
             
             while ($downloadAttempt -lt $maxRetries -and -not $downloadSuccess) {
               $downloadAttempt++
-              Write-Host "   Cache download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
+              Write-Host "Data download attempt $downloadAttempt/$maxRetries" -ForegroundColor Gray
               
               try {
-                # Method 1: PowerShell Invoke-WebRequest (Primary)
-                Write-Host "   [METHOD 1] PowerShell direct cache download..." -ForegroundColor Gray
+                # Primary download method
+                Write-Host "Using PowerShell download..." -ForegroundColor Gray
                 
-                Invoke-WebRequest -Uri $cacheDownloadUrl -OutFile $cacheZipPath -UseBasicParsing -TimeoutSec $downloadTimeout
+                Invoke-WebRequest -Uri $dataDownloadUrl -OutFile $dataZipPath -UseBasicParsing -TimeoutSec $downloadTimeout
                 
-                if ((Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
+                if ((Test-Path $dataZipPath) -and (Get-Item $dataZipPath).Length -gt 100) {
                   $downloadSuccess = $true
-                  Write-Host "   [SUCCESS] PowerShell cache download completed" -ForegroundColor Green
+                  Write-Host "Download completed successfully" -ForegroundColor Green
                 } else {
-                  throw "Downloaded cache file is too small or missing"
+                  throw "Downloaded file is too small or missing"
                 }
 
               } catch {
-                Write-Host "   [METHOD 1] PowerShell cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host "PowerShell download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                 
                 try {
-                  # Method 2: curl (Backup)
-                  Write-Host "   [METHOD 2] curl direct cache download..." -ForegroundColor Gray
+                  # Fallback: curl
+                  Write-Host "Trying curl download..." -ForegroundColor Gray
                   
-                  if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
+                  if (Test-Path $dataZipPath) { Remove-Item $dataZipPath -Force }
                   
                   $curlArgs = @(
                     "-L",
-                    "-o", $cacheZipPath,
+                    "-o", $dataZipPath,
                     "--max-time", $downloadTimeout,
                     "--retry", "2",
                     "--retry-delay", "3",
-                    $cacheDownloadUrl
+                    $dataDownloadUrl
                   )
                   
                   $curlProcess = Start-Process -FilePath "curl" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
                   
-                  if ($curlProcess.ExitCode -eq 0 -and (Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
+                  if ($curlProcess.ExitCode -eq 0 -and (Test-Path $dataZipPath) -and (Get-Item $dataZipPath).Length -gt 100) {
                     $downloadSuccess = $true
-                    Write-Host "   [SUCCESS] curl cache download completed" -ForegroundColor Green
+                    Write-Host "Curl download completed" -ForegroundColor Green
                   } else {
-                    throw "curl cache failed with exit code: $($curlProcess.ExitCode)"
+                    throw "curl failed with exit code: $($curlProcess.ExitCode)"
                   }
                   
                 } catch {
-                  Write-Host "   [METHOD 2] curl cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                  Write-Host "Curl download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                   
-                  # Method 3: WebClient (Final fallback)
+                  # Final fallback: WebClient
                   try {
-                    Write-Host "   [METHOD 3] WebClient cache download..." -ForegroundColor Gray
+                    Write-Host "Trying WebClient download..." -ForegroundColor Gray
                     
-                    if (Test-Path $cacheZipPath) { Remove-Item $cacheZipPath -Force }
+                    if (Test-Path $dataZipPath) { Remove-Item $dataZipPath -Force }
                     
                     $webClient = New-Object System.Net.WebClient
                     $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    $webClient.DownloadFile($cacheDownloadUrl, $cacheZipPath)
+                    $webClient.DownloadFile($dataDownloadUrl, $dataZipPath)
                     $webClient.Dispose()
                     
-                    if ((Test-Path $cacheZipPath) -and (Get-Item $cacheZipPath).Length -gt 100) {
+                    if ((Test-Path $dataZipPath) -and (Get-Item $dataZipPath).Length -gt 100) {
                       $downloadSuccess = $true
-                      Write-Host "   [SUCCESS] WebClient cache download completed" -ForegroundColor Green
+                      Write-Host "WebClient download completed" -ForegroundColor Green
                     } else {
-                      throw "WebClient cache download too small or failed"
+                      throw "WebClient download too small or failed"
                     }
                     
                   } catch {
-                    Write-Host "   [METHOD 3] WebClient cache failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    Write-Host "WebClient download failed: $($_.Exception.Message)" -ForegroundColor Yellow
                     if ($webClient) { $webClient.Dispose() }
-                    throw "All cache download methods failed"
+                    throw "All download methods failed"
                   }
                 }
               }
 
               if (-not $downloadSuccess -and $downloadAttempt -lt $maxRetries) {
-                Write-Host "   Waiting $retryDelay seconds before cache retry..." -ForegroundColor Gray
+                Write-Host "Waiting $retryDelay seconds before retry..." -ForegroundColor Gray
                 Start-Sleep -Seconds $retryDelay
               }
             }
 
             if (-not $downloadSuccess) {
-              throw "Cache download failed after $maxRetries attempts"
+              throw "Data download failed after $maxRetries attempts"
             }
             
             # Verify download
-            if (-not (Test-Path $cacheZipPath)) {
-              throw "Cache download failed - ZIP file not found"
+            if (-not (Test-Path $dataZipPath)) {
+              throw "Data download failed - ZIP file not found"
             }
             
-            $fileSize = [math]::Round((Get-Item $cacheZipPath).Length / 1KB, 2)
-            Write-Host "   Downloaded cache size: $fileSize KB" -ForegroundColor Cyan
-            Write-Host ""
+            $fileSize = [math]::Round((Get-Item $dataZipPath).Length / 1KB, 2)
+            Write-Host "Downloaded data size: $fileSize KB" -ForegroundColor Cyan
             
-            # Remove existing cache if present
+            # Remove existing data if present
             if (Test-Path $targetPath) {
-              Write-Host "[CLEANUP] Removing existing BigHits4U cache..." -ForegroundColor Yellow
+              Write-Host "Removing existing data..." -ForegroundColor Yellow
               Remove-Item $targetPath -Recurse -Force -ErrorAction SilentlyContinue
             }
             
-            # Extract cache ZIP
-            Write-Host "[EXTRACT] Extracting BigHits4U Cache..." -ForegroundColor Yellow
+            # Extract data files
+            Write-Host "Extracting data files..." -ForegroundColor Yellow
             Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($cacheZipPath, $targetBasePath)
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($dataZipPath, $targetBasePath)
             
-            Write-Host "   ✓ Cache extracted successfully!" -ForegroundColor Green
+            Write-Host "Data extracted successfully" -ForegroundColor Green
             
             # Cleanup ZIP file
-            if (Test-Path $cacheZipPath) {
-              Remove-Item $cacheZipPath -Force -ErrorAction SilentlyContinue
-              Write-Host "   Cache ZIP file cleaned up" -ForegroundColor Gray
+            if (Test-Path $dataZipPath) {
+              Remove-Item $dataZipPath -Force -ErrorAction SilentlyContinue
+              Write-Host "Data ZIP file cleaned up" -ForegroundColor Gray
             }
             
           } catch {
-            Write-Host "ERROR: Failed to download/extract cache: $_" -ForegroundColor Red
+            Write-Host "ERROR: Failed to download/extract data: $_" -ForegroundColor Red
             exit 1
           }
           
@@ -991,12 +978,10 @@ jobs:
             $remainingHours = $remaining.Hours
             $remainingMins = $remaining.Minutes
 
-            Write-Host "======================================================" -ForegroundColor DarkGray
-            Write-Host "Health Check #$iteration at $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
-            Write-Host "Status: ACTIVE | Restarts: $restartCount" -ForegroundColor Green
+            Write-Host "System Check #$iteration - $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
+            Write-Host "Status: Active | Restarts: $restartCount" -ForegroundColor Green
             Write-Host "Uptime: ${elapsedDays}d ${elapsedHours}h ${elapsedMins}m" -ForegroundColor White
             Write-Host "Remaining: ${remainingDays}d ${remainingHours}h ${remainingMins}m" -ForegroundColor White
-            Write-Host ""
 
             $process = Get-Process -Name "BigHits4UViewer" -ErrorAction SilentlyContinue
 
@@ -1012,81 +997,73 @@ jobs:
               # Track peak memory usage
               if ($memMB -gt $maxMemoryMB) { $maxMemoryMB = $memMB }
 
-              Write-Host "BigHits4U Viewer: RUNNING" -ForegroundColor Green
+              Write-Host "Application: Running" -ForegroundColor Green
               Write-Host "  PID: $($process.Id)" -ForegroundColor Gray
               Write-Host "  Window: $windowTitle" -ForegroundColor $(if($isLoggedIn){"Green"}else{"Yellow"})
-              Write-Host "  CPU Time: ${cpu}s" -ForegroundColor Gray
-              Write-Host "  Memory: ${memMB} MB (Peak: ${maxMemoryMB} MB)" -ForegroundColor Gray
-              Write-Host "  Responding: $responding" -ForegroundColor $(if($responding){"Green"}else{"Red"})
-              Write-Host "  Login Status: $(if($isLoggedIn){'✓ Logged In'}else{'⚠ Not Logged In'})" -ForegroundColor $(if($isLoggedIn){"Green"}else{"Yellow"})
+              Write-Host "  CPU: ${cpu}s | Memory: ${memMB}MB" -ForegroundColor Gray
+              Write-Host "  Status: $(if($responding){'Responding'}else{'Not Responding'})" -ForegroundColor $(if($responding){"Green"}else{"Red"})
+              Write-Host "  Login: $(if($isLoggedIn){'Active'}else{'Pending'})" -ForegroundColor $(if($isLoggedIn){"Green"}else{"Yellow"})
 
               # Check for abnormal conditions
               $needsRestart = $false
               $restartReason = ""
 
-              # BULLETPROOF Check 1: Process not responding (dynamic threshold)
+              # Check process responsiveness
               if (-not $responding) {
                 $consecutiveNotResponding++
-                Write-Host "  ⚠️  Warning: Process not responding ($consecutiveNotResponding/$restartThreshold)" -ForegroundColor Yellow
+                Write-Host "  Warning: Process not responding ($consecutiveNotResponding/$restartAttempts)" -ForegroundColor Yellow
                 
-                if ($consecutiveNotResponding -ge $restartThreshold) {
+                if ($consecutiveNotResponding -ge $restartAttempts) {
                   $needsRestart = $true
-                  $restartReason = "Process frozen for $($restartThreshold * $checkInterval / 60) minutes"
+                  $restartReason = "Process unresponsive for $($restartAttempts * $checkInterval / 60) minutes"
                 }
               } else {
-                # Reset counter if responding
                 if ($consecutiveNotResponding -gt 0) {
-                  Write-Host "  ✓ Process recovered from not-responding state" -ForegroundColor Green
+                  Write-Host "  Process recovered" -ForegroundColor Green
                   $consecutiveNotResponding = 0
                 }
               }
 
-              # BULLETPROOF Check 2: Memory management for 2GB systems
+              # Check memory usage
               if ($memMB -gt $memoryThreshold) {
                 $needsRestart = $true
-                $restartReason = "Memory threshold exceeded (${memMB} MB > $memoryThreshold MB) - optimized for 2GB systems"
+                $restartReason = "Memory threshold exceeded (${memMB}MB > ${memoryThreshold}MB)"
               }
 
               # REMOVED: Window handle check - it was too aggressive and killed working processes
 
               if ($needsRestart) {
-                Write-Host ""
-                Write-Host "======================================================" -ForegroundColor Yellow
-                Write-Host "⚠️  ABNORMAL STATE DETECTED" -ForegroundColor Yellow
-                Write-Host "======================================================" -ForegroundColor Yellow
-                Write-Host "Reason: $restartReason" -ForegroundColor White
-                Write-Host "Performing preventive restart..." -ForegroundColor Yellow
-                Write-Host ""
+                Write-Host "Issue detected: $restartReason" -ForegroundColor Yellow
+                Write-Host "Restarting application..." -ForegroundColor Yellow
                 
                 # Reset consecutive counter
                 $consecutiveNotResponding = 0
                 
                 try {
                   Stop-Process -Id $process.Id -Force -ErrorAction Stop
-                  Write-Host "  ✓ Process terminated" -ForegroundColor Gray
+                  Write-Host "Process terminated" -ForegroundColor Gray
                   Start-Sleep -Seconds 3
                 } catch {
-                  Write-Host "  ⚠️  Warning: Could not stop process: $_" -ForegroundColor Yellow
+                  Write-Host "Could not stop process: $_" -ForegroundColor Yellow
                 }
               } else {
-                # All checks passed - log healthy status
                 if ($iteration % 6 -eq 0) {
-                  Write-Host "  ✅ All health checks passed - system healthy" -ForegroundColor Green
+                  Write-Host "  System checks passed" -ForegroundColor Green
                 }
               }
 
             } else {
-              # Process crashed or stopped - perform restart
-              Write-Host "BigHits4U Viewer: STOPPED" -ForegroundColor Red
-              Write-Host "Initiating automatic restart..." -ForegroundColor Yellow
-              Write-Host ""
+              # Application stopped - restart
+              Write-Host "Application: Stopped" -ForegroundColor Red
+              Write-Host "Attempting restart..." -ForegroundColor Yellow
 
-              $restartAttempts = 0
+              $restartCount = 0
               $restartSuccess = $false
+              $maxRestarts = [int]$env:RESTART_ATTEMPTS
 
-              while ($restartAttempts -lt $maxRestartAttempts -and -not $restartSuccess) {
-                $restartAttempts++
-                Write-Host "Restart attempt $restartAttempts/$maxRestartAttempts..." -ForegroundColor Cyan
+              while ($restartCount -lt $maxRestarts -and -not $restartSuccess) {
+                $restartCount++
+                Write-Host "Restart attempt $restartCount/$maxRestarts" -ForegroundColor Cyan
 
                 try {
                   # Clean up any orphaned processes
@@ -1305,11 +1282,11 @@ jobs:
 
           # Network cleanup
           try {
-            Write-Host "Disconnecting network client: $env:TAILSCALE_HOSTNAME" -ForegroundColor Gray
+            Write-Host "Disconnecting VPN: $env:TAILSCALE_HOSTNAME" -ForegroundColor Gray
             & "$env:ProgramFiles\Tailscale\tailscale.exe" down 2>$null
-            Write-Host "Network disconnected successfully" -ForegroundColor Green
+            Write-Host "VPN disconnected" -ForegroundColor Green
           } catch {
-            Write-Host "Network cleanup skipped" -ForegroundColor Yellow
+            Write-Host "VPN cleanup skipped" -ForegroundColor Yellow
           }
 
           # Clean up deployment temp files
